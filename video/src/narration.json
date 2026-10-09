@@ -1,0 +1,47 @@
+[
+  {
+    "id": "01-intro",
+    "title": "Pembuka",
+    "text": "Selamat datang, petugas Avsec Bandara A. P. T. Pranoto. Ini panduan singkat aplikasi SIPANDAI."
+  },
+  {
+    "id": "02-login",
+    "title": "Login PIN",
+    "text": "Masukkan PIN petugas, empat sampai enam digit, lalu tekan Masuk Petugas. Aplikasi langsung membuka mode kiosk."
+  },
+  {
+    "id": "03-wajah",
+    "title": "Kiosk & Wajah",
+    "text": "Minta penumpang menghadap kamera. Saat muncul tanda Siap scan, wajah sudah terdeteksi, dan fotonya tersimpan otomatis ketika boarding pass di-scan."
+  },
+  {
+    "id": "04-ktp",
+    "title": "Cek KTP",
+    "text": "Bila mode KTP aktif, dekatkan KTP ke kamera agar namanya terbaca. Anak atau bayi tanpa KTP? Tekan Tanpa KTP, lalu cek dokumennya secara visual."
+  },
+  {
+    "id": "05-scan",
+    "title": "Scan Boarding Pass",
+    "text": "Lalu scan boarding pass dengan scanner USB, atau ketik kodenya secara manual. Sistem langsung mencocokkan kode penerbangan."
+  },
+  {
+    "id": "06-valid",
+    "title": "Hasil Valid",
+    "text": "Muncul VALID dan suara Berhasil? Persilakan penumpang lewat. Layar hasil menutup sendiri dalam enam detik."
+  },
+  {
+    "id": "07-ditolak",
+    "title": "Duplikat & Ditolak",
+    "text": "Kuning berarti tiket sudah pernah dipakai. Merah berarti ditolak: bukan hari ini, penerbangan belum aktif, tidak dikenal, barcode tidak valid, atau KTP tidak cocok. Tahan penumpang, dan eskalasi sesuai S. O. P."
+  },
+  {
+    "id": "08-tips",
+    "title": "Tips Shift",
+    "text": "Pantau penerbangan yang sedang boarding beserta jumlah penumpangnya. Supervisor dapat memantau semua hasil scan, dan tombol Demo scan bisa dipakai untuk latihan."
+  },
+  {
+    "id": "09-penutup",
+    "title": "Penutup",
+    "text": "SIPANDAI. Aman, cepat, tertib. Selamat bertugas!"
+  }
+]

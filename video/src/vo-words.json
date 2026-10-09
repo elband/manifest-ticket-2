@@ -1,0 +1,850 @@
+{
+ "01-intro": [
+  {
+   "text": "Selamat",
+   "start": 0.1,
+   "end": 0.537
+  },
+  {
+   "text": "datang",
+   "start": 0.537,
+   "end": 0.985
+  },
+  {
+   "text": "petugas",
+   "start": 1.267,
+   "end": 1.725
+  },
+  {
+   "text": "Avsec",
+   "start": 1.725,
+   "end": 2.152
+  },
+  {
+   "text": "Bandara",
+   "start": 2.152,
+   "end": 2.548
+  },
+  {
+   "text": "A",
+   "start": 2.548,
+   "end": 2.756
+  },
+  {
+   "text": "P",
+   "start": 2.756,
+   "end": 3.017
+  },
+  {
+   "text": "T",
+   "start": 3.017,
+   "end": 3.287
+  },
+  {
+   "text": "Pranoto",
+   "start": 3.288,
+   "end": 4.017
+  },
+  {
+   "text": "Ini",
+   "start": 4.706,
+   "end": 5.008
+  },
+  {
+   "text": "panduan",
+   "start": 5.008,
+   "end": 5.415
+  },
+  {
+   "text": "singkat",
+   "start": 5.415,
+   "end": 5.8
+  },
+  {
+   "text": "aplikasi",
+   "start": 5.8,
+   "end": 6.435
+  },
+  {
+   "text": "SIPANDAI",
+   "start": 6.435,
+   "end": 7.185
+  }
+ ],
+ "02-login": [
+  {
+   "text": "Masukkan",
+   "start": 0.1,
+   "end": 0.642
+  },
+  {
+   "text": "PIN",
+   "start": 0.642,
+   "end": 0.84
+  },
+  {
+   "text": "petugas",
+   "start": 0.84,
+   "end": 1.454
+  },
+  {
+   "text": "empat",
+   "start": 1.704,
+   "end": 1.996
+  },
+  {
+   "text": "sampai",
+   "start": 1.996,
+   "end": 2.308
+  },
+  {
+   "text": "enam",
+   "start": 2.308,
+   "end": 2.631
+  },
+  {
+   "text": "digit",
+   "start": 2.631,
+   "end": 3.006
+  },
+  {
+   "text": "lalu",
+   "start": 3.267,
+   "end": 3.517
+  },
+  {
+   "text": "tekan",
+   "start": 3.517,
+   "end": 3.871
+  },
+  {
+   "text": "Masuk",
+   "start": 3.871,
+   "end": 4.235
+  },
+  {
+   "text": "Petugas",
+   "start": 4.235,
+   "end": 4.944
+  },
+  {
+   "text": "Aplikasi",
+   "start": 5.633,
+   "end": 6.206
+  },
+  {
+   "text": "langsung",
+   "start": 6.206,
+   "end": 6.623
+  },
+  {
+   "text": "membuka",
+   "start": 6.623,
+   "end": 7.008
+  },
+  {
+   "text": "mode",
+   "start": 7.008,
+   "end": 7.352
+  },
+  {
+   "text": "kiosk",
+   "start": 7.352,
+   "end": 7.946
+  }
+ ],
+ "03-wajah": [
+  {
+   "text": "Minta",
+   "start": 0.1,
+   "end": 0.465
+  },
+  {
+   "text": "penumpang",
+   "start": 0.465,
+   "end": 0.954
+  },
+  {
+   "text": "menghadap",
+   "start": 0.954,
+   "end": 1.444
+  },
+  {
+   "text": "kamera",
+   "start": 1.444,
+   "end": 2.038
+  },
+  {
+   "text": "Saat",
+   "start": 2.727,
+   "end": 3.144
+  },
+  {
+   "text": "muncul",
+   "start": 3.144,
+   "end": 3.467
+  },
+  {
+   "text": "tanda",
+   "start": 3.467,
+   "end": 3.717
+  },
+  {
+   "text": "Siap",
+   "start": 3.717,
+   "end": 3.987
+  },
+  {
+   "text": "scan",
+   "start": 3.987,
+   "end": 4.404
+  },
+  {
+   "text": "wajah",
+   "start": 4.717,
+   "end": 5.06
+  },
+  {
+   "text": "sudah",
+   "start": 5.06,
+   "end": 5.31
+  },
+  {
+   "text": "terdeteksi",
+   "start": 5.31,
+   "end": 5.998
+  },
+  {
+   "text": "dan",
+   "start": 6.342,
+   "end": 6.54
+  },
+  {
+   "text": "fotonya",
+   "start": 6.54,
+   "end": 6.946
+  },
+  {
+   "text": "tersimpan",
+   "start": 6.946,
+   "end": 7.394
+  },
+  {
+   "text": "otomatis",
+   "start": 7.394,
+   "end": 8.008
+  },
+  {
+   "text": "ketika",
+   "start": 8.008,
+   "end": 8.331
+  },
+  {
+   "text": "boarding",
+   "start": 8.331,
+   "end": 8.758
+  },
+  {
+   "text": "pass",
+   "start": 8.758,
+   "end": 9.029
+  },
+  {
+   "text": "di-scan",
+   "start": 9.029,
+   "end": 9.592
+  }
+ ],
+ "04-ktp": [
+  {
+   "text": "Bila",
+   "start": 0.1,
+   "end": 0.423
+  },
+  {
+   "text": "mode",
+   "start": 0.423,
+   "end": 0.715
+  },
+  {
+   "text": "KTP",
+   "start": 0.715,
+   "end": 1.142
+  },
+  {
+   "text": "aktif",
+   "start": 1.142,
+   "end": 1.715
+  },
+  {
+   "text": "dekatkan",
+   "start": 1.996,
+   "end": 2.506
+  },
+  {
+   "text": "KTP",
+   "start": 2.506,
+   "end": 2.902
+  },
+  {
+   "text": "ke",
+   "start": 2.902,
+   "end": 2.996
+  },
+  {
+   "text": "kamera",
+   "start": 2.996,
+   "end": 3.433
+  },
+  {
+   "text": "agar",
+   "start": 3.433,
+   "end": 3.767
+  },
+  {
+   "text": "namanya",
+   "start": 3.767,
+   "end": 4.183
+  },
+  {
+   "text": "terbaca",
+   "start": 4.183,
+   "end": 4.819
+  },
+  {
+   "text": "Anak",
+   "start": 5.508,
+   "end": 5.842
+  },
+  {
+   "text": "atau",
+   "start": 5.842,
+   "end": 6.144
+  },
+  {
+   "text": "bayi",
+   "start": 6.144,
+   "end": 6.425
+  },
+  {
+   "text": "tanpa",
+   "start": 6.425,
+   "end": 6.779
+  },
+  {
+   "text": "KTP",
+   "start": 6.779,
+   "end": 7.352
+  },
+  {
+   "text": "Tekan",
+   "start": 8.05,
+   "end": 8.404
+  },
+  {
+   "text": "Tanpa",
+   "start": 8.404,
+   "end": 8.675
+  },
+  {
+   "text": "KTP",
+   "start": 8.675,
+   "end": 9.3
+  },
+  {
+   "text": "lalu",
+   "start": 9.602,
+   "end": 9.883
+  },
+  {
+   "text": "cek",
+   "start": 9.883,
+   "end": 10.144
+  },
+  {
+   "text": "dokumennya",
+   "start": 10.144,
+   "end": 10.706
+  },
+  {
+   "text": "secara",
+   "start": 10.706,
+   "end": 11.123
+  },
+  {
+   "text": "visual",
+   "start": 11.123,
+   "end": 11.779
+  }
+ ],
+ "05-scan": [
+  {
+   "text": "Lalu",
+   "start": 0.1,
+   "end": 0.444
+  },
+  {
+   "text": "scan",
+   "start": 0.444,
+   "end": 0.715
+  },
+  {
+   "text": "boarding",
+   "start": 0.715,
+   "end": 1.058
+  },
+  {
+   "text": "pass",
+   "start": 1.058,
+   "end": 1.36
+  },
+  {
+   "text": "dengan",
+   "start": 1.36,
+   "end": 1.621
+  },
+  {
+   "text": "scanner",
+   "start": 1.621,
+   "end": 2.027
+  },
+  {
+   "text": "USB",
+   "start": 2.027,
+   "end": 2.683
+  },
+  {
+   "text": "atau",
+   "start": 2.975,
+   "end": 3.183
+  },
+  {
+   "text": "ketik",
+   "start": 3.183,
+   "end": 3.433
+  },
+  {
+   "text": "kodenya",
+   "start": 3.433,
+   "end": 3.871
+  },
+  {
+   "text": "secara",
+   "start": 3.871,
+   "end": 4.308
+  },
+  {
+   "text": "manual",
+   "start": 4.308,
+   "end": 4.902
+  },
+  {
+   "text": "Sistem",
+   "start": 5.592,
+   "end": 6.092
+  },
+  {
+   "text": "langsung",
+   "start": 6.092,
+   "end": 6.487
+  },
+  {
+   "text": "mencocokkan",
+   "start": 6.487,
+   "end": 7.081
+  },
+  {
+   "text": "kode",
+   "start": 7.081,
+   "end": 7.415
+  },
+  {
+   "text": "penerbangan",
+   "start": 7.415,
+   "end": 8.206
+  }
+ ],
+ "06-valid": [
+  {
+   "text": "Muncul",
+   "start": 0.1,
+   "end": 0.517
+  },
+  {
+   "text": "VALID",
+   "start": 0.517,
+   "end": 0.912
+  },
+  {
+   "text": "dan",
+   "start": 0.912,
+   "end": 1.079
+  },
+  {
+   "text": "suara",
+   "start": 1.079,
+   "end": 1.444
+  },
+  {
+   "text": "Berhasil",
+   "start": 1.444,
+   "end": 2.069
+  },
+  {
+   "text": "Persilakan",
+   "start": 2.758,
+   "end": 3.435
+  },
+  {
+   "text": "penumpang",
+   "start": 3.435,
+   "end": 3.967
+  },
+  {
+   "text": "lewat",
+   "start": 3.967,
+   "end": 4.321
+  },
+  {
+   "text": "Layar",
+   "start": 5.019,
+   "end": 5.373
+  },
+  {
+   "text": "hasil",
+   "start": 5.373,
+   "end": 5.737
+  },
+  {
+   "text": "menutup",
+   "start": 5.737,
+   "end": 6.06
+  },
+  {
+   "text": "sendiri",
+   "start": 6.06,
+   "end": 6.529
+  },
+  {
+   "text": "dalam",
+   "start": 6.529,
+   "end": 6.852
+  },
+  {
+   "text": "enam",
+   "start": 6.852,
+   "end": 7.217
+  },
+  {
+   "text": "detik",
+   "start": 7.217,
+   "end": 7.54
+  }
+ ],
+ "07-ditolak": [
+  {
+   "text": "Kuning",
+   "start": 0.1,
+   "end": 0.506
+  },
+  {
+   "text": "berarti",
+   "start": 0.506,
+   "end": 0.912
+  },
+  {
+   "text": "tiket",
+   "start": 0.912,
+   "end": 1.329
+  },
+  {
+   "text": "sudah",
+   "start": 1.329,
+   "end": 1.6
+  },
+  {
+   "text": "pernah",
+   "start": 1.6,
+   "end": 1.933
+  },
+  {
+   "text": "dipakai",
+   "start": 1.933,
+   "end": 2.548
+  },
+  {
+   "text": "Merah",
+   "start": 3.237,
+   "end": 3.623
+  },
+  {
+   "text": "berarti",
+   "start": 3.623,
+   "end": 4.05
+  },
+  {
+   "text": "ditolak",
+   "start": 4.05,
+   "end": 4.529
+  },
+  {
+   "text": "bukan",
+   "start": 4.81,
+   "end": 5.133
+  },
+  {
+   "text": "hari",
+   "start": 5.133,
+   "end": 5.383
+  },
+  {
+   "text": "ini",
+   "start": 5.383,
+   "end": 5.81
+  },
+  {
+   "text": "penerbangan",
+   "start": 6.06,
+   "end": 6.644
+  },
+  {
+   "text": "belum",
+   "start": 6.644,
+   "end": 6.842
+  },
+  {
+   "text": "aktif",
+   "start": 6.842,
+   "end": 7.373
+  },
+  {
+   "text": "tidak",
+   "start": 7.602,
+   "end": 7.852
+  },
+  {
+   "text": "dikenal",
+   "start": 7.852,
+   "end": 8.373
+  },
+  {
+   "text": "barcode",
+   "start": 8.633,
+   "end": 8.987
+  },
+  {
+   "text": "tidak",
+   "start": 8.988,
+   "end": 9.238
+  },
+  {
+   "text": "valid",
+   "start": 9.238,
+   "end": 9.592
+  },
+  {
+   "text": "atau",
+   "start": 9.842,
+   "end": 10.071
+  },
+  {
+   "text": "KTP",
+   "start": 10.071,
+   "end": 10.519
+  },
+  {
+   "text": "tidak",
+   "start": 10.519,
+   "end": 10.863
+  },
+  {
+   "text": "cocok",
+   "start": 10.863,
+   "end": 11.238
+  },
+  {
+   "text": "Tahan",
+   "start": 11.935,
+   "end": 12.29
+  },
+  {
+   "text": "penumpang",
+   "start": 12.29,
+   "end": 12.925
+  },
+  {
+   "text": "dan",
+   "start": 13.217,
+   "end": 13.394
+  },
+  {
+   "text": "eskalasi",
+   "start": 13.394,
+   "end": 13.956
+  },
+  {
+   "text": "sesuai",
+   "start": 13.956,
+   "end": 14.342
+  },
+  {
+   "text": "S",
+   "start": 14.342,
+   "end": 14.779
+  },
+  {
+   "text": "O",
+   "start": 14.779,
+   "end": 15.123
+  },
+  {
+   "text": "P",
+   "start": 15.123,
+   "end": 15.467
+  }
+ ],
+ "08-tips": [
+  {
+   "text": "Pantau",
+   "start": 0.092,
+   "end": 0.54
+  },
+  {
+   "text": "penerbangan",
+   "start": 0.54,
+   "end": 1.071
+  },
+  {
+   "text": "yang",
+   "start": 1.071,
+   "end": 1.196
+  },
+  {
+   "text": "sedang",
+   "start": 1.196,
+   "end": 1.446
+  },
+  {
+   "text": "boarding",
+   "start": 1.446,
+   "end": 1.852
+  },
+  {
+   "text": "beserta",
+   "start": 1.852,
+   "end": 2.269
+  },
+  {
+   "text": "jumlah",
+   "start": 2.269,
+   "end": 2.685
+  },
+  {
+   "text": "penumpangnya",
+   "start": 2.685,
+   "end": 3.435
+  },
+  {
+   "text": "Supervisor",
+   "start": 4.133,
+   "end": 4.862
+  },
+  {
+   "text": "dapat",
+   "start": 4.862,
+   "end": 5.165
+  },
+  {
+   "text": "memantau",
+   "start": 5.165,
+   "end": 5.581
+  },
+  {
+   "text": "semua",
+   "start": 5.581,
+   "end": 5.925
+  },
+  {
+   "text": "hasil",
+   "start": 5.925,
+   "end": 6.258
+  },
+  {
+   "text": "scan",
+   "start": 6.258,
+   "end": 6.665
+  },
+  {
+   "text": "dan",
+   "start": 7.05,
+   "end": 7.248
+  },
+  {
+   "text": "tombol",
+   "start": 7.248,
+   "end": 7.581
+  },
+  {
+   "text": "Demo",
+   "start": 7.581,
+   "end": 7.831
+  },
+  {
+   "text": "scan",
+   "start": 7.831,
+   "end": 8.144
+  },
+  {
+   "text": "bisa",
+   "start": 8.144,
+   "end": 8.435
+  },
+  {
+   "text": "dipakai",
+   "start": 8.435,
+   "end": 8.904
+  },
+  {
+   "text": "untuk",
+   "start": 8.904,
+   "end": 9.29
+  },
+  {
+   "text": "latihan",
+   "start": 9.29,
+   "end": 9.894
+  }
+ ],
+ "09-penutup": [
+  {
+   "text": "SIPANDAI",
+   "start": 0.1,
+   "end": 0.975
+  },
+  {
+   "text": "Aman",
+   "start": 1.665,
+   "end": 2.185
+  },
+  {
+   "text": "cepat",
+   "start": 2.477,
+   "end": 2.873
+  },
+  {
+   "text": "tertib",
+   "start": 3.102,
+   "end": 3.602
+  },
+  {
+   "text": "Selamat",
+   "start": 4.3,
+   "end": 4.8
+  },
+  {
+   "text": "bertugas",
+   "start": 4.8,
+   "end": 5.571
+  }
+ ]
+}

@@ -12,6 +12,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["next", "dev", "-p", "3000"],
       "port": 3000
+    },
+    {
+      "name": "video-studio",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "video", "run", "studio", "--", "--port", "3100", "--no-open"],
+      "port": 3100
     }
   ]
 }

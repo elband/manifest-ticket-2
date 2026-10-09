@@ -1,0 +1,33 @@
+{
+  "name": "sipandai-video-panduan",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Video animasi panduan SIPANDAI untuk petugas Avsec APT Pranoto (Remotion)",
+  "scripts": {
+    "studio": "remotion studio",
+    "tts": "node scripts/tts.mjs",
+    "audio": "node scripts/audio.mjs && remotion ffmpeg -y -i public/audio/music.wav -b:a 192k public/audio/music.mp3",
+    "cams": "node scripts/fake-cams.mjs",
+    "capture": "node scripts/capture.mjs",
+    "stills": "node scripts/stills.mjs",
+    "render": "remotion render PanduanAvsec out/panduan-avsec.mp4",
+    "render:chrome": "remotion render PanduanAvsec out/panduan-avsec.mp4 --browser-executable=\"C:/Program Files/Google/Chrome/Application/chrome.exe\" --chrome-mode=chrome-for-testing",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "@remotion/google-fonts": "4.0.534",
+    "@remotion/media-utils": "4.0.534",
+    "@remotion/transitions": "4.0.534",
+    "lucide-react": "^0.469.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "msedge-tts": "2.0.9",
+    "puppeteer-core": "^24.10.0",
+    "typescript": "^5.5.4"
+  }
+}
