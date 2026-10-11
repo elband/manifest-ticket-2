@@ -15,11 +15,9 @@ import {
   Usb,
   Keyboard,
   ShieldCheck,
-  CameraOff,
   Image as ImageIcon,
   Sun,
   Moon,
-  Lock,
   ArrowRight,
   Scan,
   Volume2,
@@ -38,7 +36,6 @@ import Image from "next/image";
 import { cn, todayDateString } from "@/lib/utils";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import {
-  FaceCaptureCamera,
   type FaceCaptureHandle,
   type FaceState,
 } from "@/components/scan/FaceCaptureCamera";
@@ -80,7 +77,7 @@ import {
 } from "@/lib/settings";
 import { setTheme } from "@/lib/theme";
 import { initKtpOcr } from "@/lib/ktpOcr";
-import { getIdDoc, recognizeIdName, ID_DOC_LIST, type IdDocType } from "@/lib/idDocs";
+import { getIdDoc, recognizeIdName } from "@/lib/idDocs";
 import { matchKtpName } from "@/lib/nameMatch";
 import type {
   Flight,
@@ -276,60 +273,6 @@ function faceGateMessage(state: FaceState): { title: string; body: string } {
   }
 }
 
-const FACE_HUD: Record<
-  FaceState,
-  { label: string; sub: string; ring: string; bg: string; text: string; sub2: string }
-> = {
-  ok: {
-    label: "Face",
-    sub: "Detected",
-    ring: "ring-emerald-400/50",
-    bg: "bg-emerald-500/15",
-    text: "text-emerald-200",
-    sub2: "text-emerald-100",
-  },
-  no_face: {
-    label: "Cari",
-    sub: "Wajah…",
-    ring: "ring-rose-400/50",
-    bg: "bg-rose-500/15",
-    text: "text-rose-200",
-    sub2: "text-rose-100",
-  },
-  multiple: {
-    label: "Multi",
-    sub: "Wajah",
-    ring: "ring-amber-400/50",
-    bg: "bg-amber-500/15",
-    text: "text-amber-200",
-    sub2: "text-amber-100",
-  },
-  too_far: {
-    label: "Terlalu",
-    sub: "Jauh",
-    ring: "ring-amber-400/50",
-    bg: "bg-amber-500/15",
-    text: "text-amber-200",
-    sub2: "text-amber-100",
-  },
-  off_center: {
-    label: "Hadap",
-    sub: "Tengah",
-    ring: "ring-amber-400/50",
-    bg: "bg-amber-500/15",
-    text: "text-amber-200",
-    sub2: "text-amber-100",
-  },
-  unknown: {
-    label: "Face",
-    sub: "Init…",
-    ring: "ring-cyan-400/40",
-    bg: "bg-cyan-500/15",
-    text: "text-cyan-200",
-    sub2: "text-cyan-100",
-  },
-};
-
 export default function KioskPage() {
   const router = useRouter();
   const toast = useToast();
@@ -343,7 +286,20 @@ export default function KioskPage() {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   const [session, setSession] = React.useState<SessionUser | null>(null);
-  const [settings, setSettings] = React.useState<AppSettings>(getSettings());
+  const [rawSettings, setSettings] = React.useState<AppSettings>(getSettings());
+  // Mode kiosk tanpa kamera: semua fitur yang butuh kamera (foto wajah, gerbang
+  // wajah, KTP-first, verifikasi KTP) dipaksa mati di sini tanpa mengubah
+  // pengaturan global halaman /scan.
+  const settings = React.useMemo<AppSettings>(
+    () => ({
+      ...rawSettings,
+      faceCaptureEnabled: false,
+      requireFaceForScan: false,
+      ktpScanFirst: false,
+      ktpVerifyEnabled: false,
+    }),
+    [rawSettings],
+  );
   const [value, setValue] = React.useState("");
   const [last, setLast] = React.useState<LastResult | null>(null);
   const [recent, setRecent] = React.useState<ScanEvent[]>([]);
@@ -969,20 +925,8 @@ export default function KioskPage() {
   };
 
   const exitKiosk = () => router.push("/scan");
-  const onDeviceChange = (deviceId: string) => {
-    saveSettings({ faceCameraDeviceId: deviceId || null });
-  };
   const toggleTheme = () => setTheme(isDark ? "airport" : "dark");
   const toggleSound = () => saveSettings({ soundOn: !settings.soundOn });
-  const toggleKtp = () =>
-    saveSettings({ ktpVerifyEnabled: !settings.ktpVerifyEnabled });
-  const toggleKtpFirst = () => {
-    if (pendingKtp) {
-      URL.revokeObjectURL(pendingKtp.photoUrl);
-      setPendingKtp(null);
-    }
-    saveSettings({ ktpScanFirst: !settings.ktpScanFirst });
-  };
 
   const onForceSync = async () => {
     if (syncing) return;
@@ -1055,8 +999,6 @@ export default function KioskPage() {
   };
 
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
-  const captureEnabledUi = settings.faceCaptureEnabled;
-  const activeDoc = getIdDoc(settings.idDocType); // KTP/SIM/ID → crop + parser
 
   // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
   if (!mounted) {
@@ -1128,12 +1070,8 @@ export default function KioskPage() {
           <KioskMenu
             isDark={isDark}
             soundOn={settings.soundOn}
-            ktpOn={settings.ktpVerifyEnabled}
-            ktpFirstOn={settings.ktpScanFirst}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
-            onToggleKtp={toggleKtp}
-            onToggleKtpFirst={toggleKtpFirst}
             onExit={exitKiosk}
           />
         </div>
@@ -1152,57 +1090,8 @@ export default function KioskPage() {
       />
 
       {/* Main grid */}
-      <main className="relative z-10 grid min-h-0 flex-1 gap-4 px-6 pb-6 pt-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
-        {/* Kiri: webcam with HUD */}
-        <section className="flex min-h-0 flex-col gap-3">
-          <BiometricCamera
-            captureEnabled={captureEnabledUi}
-            cameraRef={cameraRef}
-            deviceId={settings.faceCameraDeviceId}
-            onDeviceChange={onDeviceChange}
-            faceState={faceState}
-            faceDetectorSupported={faceDetectorSupported}
-            gateActive={settings.requireFaceForScan}
-            ktpFirst={settings.ktpScanFirst}
-            ktpCaptured={!!pendingKtp}
-            ktpName={pendingKtp?.name ?? null}
-            ktpCrop={activeDoc.crop}
-            docHint={activeDoc.hint}
-          />
-
-          {/* Selector jenis dokumen (KTP-first) — mengubah kotak & parser OCR */}
-          {settings.ktpScanFirst && settings.faceCaptureEnabled && !pendingKtp && (
-            <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-white/50">
-                Dokumen
-              </span>
-              <div className="flex flex-1 gap-1">
-                {ID_DOC_LIST.map((d) => {
-                  const on = settings.idDocType === d.id;
-                  return (
-                    <button
-                      key={d.id}
-                      type="button"
-                      onClick={() => saveSettings({ idDocType: d.id as IdDocType })}
-                      className={cn(
-                        "flex-1 rounded-xl px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider transition",
-                        on
-                          ? "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow"
-                          : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/5 dark:text-white/60 dark:hover:bg-white/10",
-                      )}
-                    >
-                      {d.short}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          <PrivacyBanner />
-        </section>
-
-        {/* Kanan: scan ready + recent */}
+      <main className="relative z-10 grid min-h-0 flex-1 gap-4 px-6 pb-6 pt-2 lg:[grid-template-rows:minmax(0,1fr)]">
+        {/* Scan ready + penerbangan aktif (tanpa panel kamera) */}
         <section className="flex min-h-0 flex-col gap-4">
           <ScanReadyCard
             ktpFirst={settings.ktpScanFirst}
@@ -1479,202 +1368,6 @@ function KioskTicker() {
         </div>
       </div>
     </footer>
-  );
-}
-
-/* ─────────────── Biometric Camera with HUD overlay ─────────────── */
-
-function BiometricCamera({
-  captureEnabled,
-  cameraRef,
-  deviceId,
-  onDeviceChange,
-  faceState,
-  faceDetectorSupported,
-  gateActive,
-  ktpFirst = false,
-  ktpCaptured = false,
-  ktpName = null,
-  ktpCrop = KTP_NAME_CROP,
-  docHint = "Arahkan NAMA ke sini",
-}: {
-  captureEnabled: boolean;
-  cameraRef: React.RefObject<FaceCaptureHandle>;
-  deviceId: string | null;
-  onDeviceChange: (id: string) => void;
-  faceState: FaceState;
-  faceDetectorSupported: boolean;
-  gateActive: boolean;
-  /** Mode KTP-first aktif → tampilkan kotak panduan area NAMA di kamera utama. */
-  ktpFirst?: boolean;
-  /** KTP sudah terbaca (pendingKtp ada) → tampilkan konfirmasi, sembunyikan kotak. */
-  ktpCaptured?: boolean;
-  ktpName?: string | null;
-  /** Kotak area nama (per jenis dokumen) — panduan sekaligus region OCR. */
-  ktpCrop?: { x: number; y: number; w: number; h: number };
-  docHint?: string;
-}) {
-  const hud = FACE_HUD[faceState];
-  return (
-    <div className="relative overflow-hidden rounded-3xl bg-white/70 ring-1 ring-slate-200 dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      {/* Camera viewport */}
-      <div className="relative aspect-[4/3]">
-        {captureEnabled ? (
-          <FaceCaptureCamera
-            ref={cameraRef}
-            deviceId={deviceId}
-            showDevicePicker
-            onDeviceChange={onDeviceChange}
-            hudVariant="minimal"
-            className="h-full w-full"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-slate-100 dark:bg-slate-900">
-            <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-white/50">
-              <CameraOff className="h-10 w-10" />
-              <p className="text-sm font-semibold">Capture wajah nonaktif</p>
-              <p className="text-xs">Aktifkan di Settings.</p>
-            </div>
-          </div>
-        )}
-
-        {/* HUD overlays — corner brackets (large) */}
-        <span className="pointer-events-none absolute left-4 top-4 h-10 w-10 rounded-tl-xl border-l-2 border-t-2 border-cyan-400/80" />
-        <span className="pointer-events-none absolute right-4 top-4 h-10 w-10 rounded-tr-xl border-r-2 border-t-2 border-cyan-400/80" />
-        <span className="pointer-events-none absolute bottom-4 left-4 h-10 w-10 rounded-bl-xl border-b-2 border-l-2 border-cyan-400/80" />
-        <span className="pointer-events-none absolute bottom-4 right-4 h-10 w-10 rounded-br-xl border-b-2 border-r-2 border-cyan-400/80" />
-
-
-        {/* WEBCAM LIVE pill */}
-        <div className="absolute left-4 top-4 ml-12 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow ring-1 ring-white/10 backdrop-blur">
-          <span className="relative flex h-2 w-2 items-center justify-center">
-            <span className="absolute h-2 w-2 rounded-full bg-rose-500 animate-ping" />
-            <span className="relative h-1.5 w-1.5 rounded-full bg-rose-500" />
-          </span>
-          Webcam Live
-        </div>
-
-        {/* Side HUD: live face state */}
-        {captureEnabled && (
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            <span className="h-px w-6 bg-gradient-to-r from-transparent to-cyan-400/70" />
-            <div className={cn("rounded-md px-2 py-1 ring-1 backdrop-blur transition-colors", hud.bg, hud.ring)}>
-              <p className={cn("text-[8.5px] font-bold uppercase tracking-[0.18em]", hud.text)}>
-                {hud.label}
-              </p>
-              <p className={cn("text-[9.5px] font-black tracking-wider", hud.sub2)}>
-                {hud.sub}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Top-center: gate banner when face required but not OK */}
-        {captureEnabled && gateActive && faceDetectorSupported && faceState !== "ok" && (
-          <div className="absolute inset-x-0 top-3 flex justify-center">
-            <div className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10.5px] font-black uppercase tracking-wider ring-1 backdrop-blur",
-              faceState === "no_face"
-                ? "bg-rose-500/20 ring-rose-400/60 text-rose-100"
-                : "bg-amber-500/20 ring-amber-400/60 text-amber-100",
-            )}>
-              <span className="h-1.5 w-1.5 rounded-full bg-current animate-ping" />
-              {faceState === "no_face" && "Wajah tidak terdeteksi"}
-              {faceState === "multiple" && "Lebih dari 1 wajah"}
-              {faceState === "too_far" && "Wajah terlalu jauh"}
-              {faceState === "off_center" && "Hadap kamera & ke tengah"}
-              {faceState === "unknown" && "Menyiapkan deteksi…"}
-            </div>
-          </div>
-        )}
-        {captureEnabled && gateActive && faceDetectorSupported && faceState === "ok" && (
-          <div className="absolute inset-x-0 top-3 flex justify-center">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/25 px-3 py-1 text-[10.5px] font-black uppercase tracking-wider text-emerald-100 ring-1 ring-emerald-400/60 backdrop-blur">
-              <CheckCircle2 className="h-3 w-3" />
-              Siap scan
-            </div>
-          </div>
-        )}
-
-        {/* Side HUD: CAPTURE ACTIVE */}
-        {captureEnabled && (
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            <div className="rounded-md bg-emerald-500/15 px-2 py-1 ring-1 ring-emerald-400/40 backdrop-blur">
-              <p className="text-[8.5px] font-bold uppercase tracking-[0.18em] text-emerald-200">
-                Capture
-              </p>
-              <p className="text-[9.5px] font-black tracking-wider text-emerald-100">
-                Active
-              </p>
-            </div>
-            <span className="h-px w-6 bg-gradient-to-l from-transparent to-emerald-400/70" />
-          </div>
-        )}
-
-        {/* ===== Panduan KTP (mode KTP-first): kotak area NAMA ===== */}
-        {captureEnabled && ktpFirst && !ktpCaptured && (
-          <>
-            {/* Kotak baca NAMA — posisinya klop dengan KTP_NAME_CROP yang di-OCR. */}
-            <div
-              className="pointer-events-none absolute rounded-lg border-[3px] border-emerald-400 shadow-[0_0_0_9999px_rgba(2,6,23,0.35)]"
-              style={{
-                left: `${ktpCrop.x * 100}%`,
-                top: `${ktpCrop.y * 100}%`,
-                width: `${ktpCrop.w * 100}%`,
-                height: `${ktpCrop.h * 100}%`,
-              }}
-            >
-              <span className="absolute -left-[3px] -top-[3px] h-5 w-5 rounded-tl-lg border-l-[3px] border-t-[3px] border-emerald-300" />
-              <span className="absolute -right-[3px] -top-[3px] h-5 w-5 rounded-tr-lg border-r-[3px] border-t-[3px] border-emerald-300" />
-              <span className="absolute -bottom-[3px] -left-[3px] h-5 w-5 rounded-bl-lg border-b-[3px] border-l-[3px] border-emerald-300" />
-              <span className="absolute -bottom-[3px] -right-[3px] h-5 w-5 rounded-br-lg border-b-[3px] border-r-[3px] border-emerald-300" />
-              <span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emerald-400 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-950 shadow">
-                {docHint}
-              </span>
-            </div>
-            {/* Banner atas */}
-            <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/25 px-3 py-1 text-[10.5px] font-black uppercase tracking-wider text-emerald-100 ring-1 ring-emerald-400/60 backdrop-blur">
-                <span className="h-1.5 w-1.5 rounded-full bg-current animate-ping" />
-                Tunjukkan KTP — dekatkan sampai nama jelas
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* KTP sudah terbaca → konfirmasi nama */}
-        {captureEnabled && ktpFirst && ktpCaptured && (
-          <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-            <div className="inline-flex max-w-[90%] items-center gap-1.5 rounded-full bg-emerald-500/90 px-3 py-1 text-[11px] font-black uppercase tracking-wider text-white ring-1 ring-emerald-300/60 shadow backdrop-blur">
-              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                Nama terbaca{ktpName ? `: ${ktpName}` : ""} — scan boarding pass
-              </span>
-            </div>
-          </div>
-        )}
-
-      </div>
-    </div>
-  );
-}
-
-function PrivacyBanner() {
-  return (
-    <div className="flex items-center gap-3 rounded-2xl bg-white/70 px-4 py-3 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-400 ring-1 ring-cyan-400/30">
-        <ShieldCheck className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-cyan-700 dark:text-cyan-300">
-          Kamera Aktif untuk Verifikasi Visual Penumpang
-        </p>
-        <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-white/55">
-          Foto disimpan lokal di perangkat & tidak dikirim ke server.
-        </p>
-      </div>
-      <Lock className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-white/40" />
-    </div>
   );
 }
 
@@ -2106,20 +1799,12 @@ function KioskMenu({
   soundOn,
   onToggleSound,
   onToggleTheme,
-  onToggleKtp,
-  onToggleKtpFirst,
   onExit,
-  ktpOn,
-  ktpFirstOn,
 }: {
   isDark: boolean;
   soundOn: boolean;
-  ktpOn: boolean;
-  ktpFirstOn: boolean;
   onToggleSound: () => void;
   onToggleTheme: () => void;
-  onToggleKtp: () => void;
-  onToggleKtpFirst: () => void;
   onExit: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -2166,16 +1851,6 @@ function KioskMenu({
             icon={isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             label={isDark ? "Mode terang" : "Mode gelap"}
             onClick={onToggleTheme}
-          />
-          <MenuItem
-            icon={<IdCard className="h-4 w-4" />}
-            label={ktpOn ? "Verifikasi KTP: Aktif" : "Verifikasi KTP: Mati"}
-            onClick={onToggleKtp}
-          />
-          <MenuItem
-            icon={<ScanLine className="h-4 w-4" />}
-            label={ktpFirstOn ? "Scan KTP dulu: Aktif" : "Scan KTP dulu: Mati"}
-            onClick={onToggleKtpFirst}
           />
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
