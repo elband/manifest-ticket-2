@@ -67,7 +67,9 @@ pm2_up() {
   if pm2 describe "$name" >/dev/null 2>&1; then
     pm2 reload "$name" --update-env
   else
-    pm2 start "$@" --name "$name" --time
+    # --name/--time HARUS sebelum "$@": argumen setelah `--` (mis. `-- start -p 3000`)
+    # diteruskan apa adanya ke skrip, jadi opsi pm2 di belakangnya ikut tertelan.
+    pm2 start --name "$name" --time "$@"
   fi
 }
 

@@ -4,14 +4,20 @@ import "./instrument";
 import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { AllExceptionsFilter } from "./common/all-exceptions.filter";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { cors: false });
   const config = app.get(ConfigService);
+
+  // Di belakang Nginx semua request datang dari 127.0.0.1. Percayai X-Forwarded-For
+  // HANYA dari loopback agar req.ip = IP klien asli — ThrottlerGuard (F-02) menghitung
+  // per IP; tanpa ini seluruh kiosk berbagi satu kuota 120 req/menit.
+  app.set("trust proxy", "loopback");
 
   // F-03: di produksi, tolak boot bila konfigurasi tidak aman (gagal-cepat).
   if (process.env.NODE_ENV === "production") {
