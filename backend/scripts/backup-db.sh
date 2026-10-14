@@ -31,7 +31,7 @@ echo "[$(date)] Backup DB '$DB_NAME' @ $DB_HOST:$DB_PORT → $DEST"
 
 # --- Dump DB (single-transaction: konsisten tanpa lock lama untuk InnoDB) ---
 mysqldump --host="$DB_HOST" --port="$DB_PORT" --user="$DB_USER" --password="$DB_PASS" \
-  --single-transaction --quick --routines --triggers "$DB_NAME" \
+  --single-transaction --quick --routines --triggers --no-tablespaces "$DB_NAME" \
   | gzip > "$DEST/afvs-db.sql.gz"
 
 # --- Backup folder uploads (foto wajah = data biometrik, WAJIB ikut) ---
