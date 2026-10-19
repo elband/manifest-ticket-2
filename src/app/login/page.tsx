@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plane,
@@ -155,6 +155,34 @@ export default function LoginPage() {
     setError(null);
     setPin((p) => p.slice(0, -1));
   };
+
+  // Ref ke submit terbaru supaya listener keyboard tidak memakai state basi.
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const pinLenRef = useRef(pin.length);
+  pinLenRef.current = pin.length;
+
+  // Mode PIN: terima input dari tombol angka keyboard (baris atas & numpad),
+  // Backspace/Delete untuk hapus, Enter untuk masuk.
+  useEffect(() => {
+    if (authMode !== "pin") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        pressDigit(e.key);
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        pressBackspace();
+      } else if (e.key === "Enter") {
+        // preventDefault juga mencegah Enter "mengklik" tombol yang sedang fokus.
+        e.preventDefault();
+        if (pinLenRef.current >= 4) void submitRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [authMode]);
 
   return (
     <div className="relative flex min-h-screen w-full items-stretch overflow-hidden bg-slate-950">
@@ -379,8 +407,8 @@ export default function LoginPage() {
                     </div>
 
                     <p className="mt-3 text-center text-xs text-white/55">
-                      Login cukup dengan PIN Anda (4–6 digit). Tidak ada batas
-                      waktu otomatis.
+                      Login cukup dengan PIN Anda (4–6 digit) — bisa juga
+                      diketik lewat keyboard, Enter untuk masuk.
                     </p>
                   </div>
 
