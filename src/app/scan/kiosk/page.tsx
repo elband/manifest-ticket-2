@@ -15,7 +15,6 @@ import {
   Usb,
   Keyboard,
   ShieldCheck,
-  Image as ImageIcon,
   Sun,
   Moon,
   ArrowRight,
@@ -31,6 +30,9 @@ import {
   Megaphone,
   IdCard,
   UserX,
+  Power,
+  Maximize,
+  Minimize,
   Ticket,
   Scissors,
   Droplets,
@@ -334,6 +336,7 @@ export default function KioskPage() {
   const [pendingKtp, setPendingKtp] = React.useState<PendingKtp | null>(null);
   const pendingKtpRef = React.useRef<PendingKtp | null>(null);
   const [ktpDecision, setKtpDecision] = React.useState<KtpDecision | null>(null);
+  const [closeConfirm, setCloseConfirm] = React.useState(false);
   React.useEffect(() => {
     pendingKtpRef.current = pendingKtp;
   }, [pendingKtp]);
@@ -937,6 +940,22 @@ export default function KioskPage() {
   };
 
   const exitKiosk = () => router.push("/scan");
+  // Browser hanya mengizinkan window.close() bila jendela dibuka oleh skrip
+  // atau riwayatnya cuma 1 halaman; selain itu ditolak diam-diam → cek lalu
+  // beri petunjuk tutup manual.
+  const closeBrowser = () => {
+    setCloseConfirm(false);
+    window.close();
+    setTimeout(() => {
+      if (!window.closed) {
+        toast.warning(
+          "Browser tidak mengizinkan halaman menutup dirinya sendiri. Tekan Alt+F4 (atau Ctrl+W) untuk menutup.",
+          "Tutup manual",
+        );
+        inputRef.current?.focus();
+      }
+    }, 300);
+  };
   const toggleTheme = () => setTheme(isDark ? "airport" : "dark");
   const toggleSound = () => saveSettings({ soundOn: !settings.soundOn });
 
@@ -1020,7 +1039,7 @@ export default function KioskPage() {
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col overflow-hidden transition-colors",
+        "relative flex h-screen flex-col overflow-clip transition-colors",
         "bg-[#eef3fb] text-slate-800",
         "dark:bg-[#0a1226] dark:text-white",
       )}
@@ -1085,6 +1104,7 @@ export default function KioskPage() {
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
             onExit={exitKiosk}
+            onCloseBrowser={() => setCloseConfirm(true)}
           />
         </div>
       </header>
@@ -1244,6 +1264,44 @@ export default function KioskPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={closeConfirm}
+        onClose={() => {
+          setCloseConfirm(false);
+          inputRef.current?.focus();
+        }}
+        tone="danger"
+        size="sm"
+        title="Tutup browser?"
+        icon={<Power className="h-5 w-5" />}
+      >
+        <div className="space-y-4 p-1">
+          <p className="text-[13px] leading-snug text-slate-600 dark:text-ink-muted">
+            Layar kiosk akan ditutup dan scanner tidak menerima boarding pass
+            sampai browser dibuka kembali.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setCloseConfirm(false);
+                inputRef.current?.focus();
+              }}
+              className="rounded-2xl bg-slate-100 px-3 py-2.5 text-[13px] font-bold text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-white/80 dark:hover:bg-white/15"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={closeBrowser}
+              className="rounded-2xl bg-rose-600 px-3 py-2.5 text-[13px] font-bold text-white hover:bg-rose-700"
+            >
+              Tutup Browser
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <KtpVerifyModal
@@ -2236,15 +2294,34 @@ function KioskMenu({
   onToggleSound,
   onToggleTheme,
   onExit,
+  onCloseBrowser,
 }: {
   isDark: boolean;
   soundOn: boolean;
   onToggleSound: () => void;
   onToggleTheme: () => void;
   onExit: () => void;
+  onCloseBrowser: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
+  // Ikuti status fullscreen dari browser (juga saat user keluar via Esc/F11).
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  React.useEffect(() => {
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    sync();
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      // Ditolak browser (mis. kebijakan/iframe) — biarkan; status tetap sinkron
+      // lewat event fullscreenchange.
+    }
+  };
 
   React.useEffect(() => {
     if (!open) return;
@@ -2288,6 +2365,14 @@ function KioskMenu({
             label={isDark ? "Mode terang" : "Mode gelap"}
             onClick={onToggleTheme}
           />
+          <MenuItem
+            icon={isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
+            onClick={() => {
+              setOpen(false);
+              void toggleFullscreen();
+            }}
+          />
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
             icon={<X className="h-4 w-4" />}
@@ -2296,6 +2381,15 @@ function KioskMenu({
             onClick={() => {
               setOpen(false);
               onExit();
+            }}
+          />
+          <MenuItem
+            icon={<Power className="h-4 w-4" />}
+            label="Tutup Browser"
+            danger
+            onClick={() => {
+              setOpen(false);
+              onCloseBrowser();
             }}
           />
         </div>
@@ -2589,7 +2683,7 @@ function KtpMatchBadge({ v }: { v: KtpVerification }) {
 }
 
 function BoardingPassModalBody({ last }: { last: LastResult }) {
-  const { flight, parsed, faceUrl, passengerName } = last;
+  const { flight, parsed, passengerName } = last;
   if (!flight || !parsed) return null;
   const meta = getAirlineMeta(flight.airlineCode);
   const enrich = SEED_BOARDING_PASSES.find(
@@ -2597,8 +2691,8 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
   );
   const cabinClass = enrich?.cabinClass ?? "Economy";
   const isBusiness = cabinClass === "Business";
-  const originCity = (enrich?.originCity ?? flight.originAirport).toUpperCase();
-  const destCity = (enrich?.destinationCity ?? flight.destinationAirport).toUpperCase();
+  const originCity = enrich?.originCity ?? flight.originAirport;
+  const destCity = enrich?.destinationCity ?? flight.destinationAirport;
   const name = (passengerName ?? parsed.passengerName ?? "(nama tidak ada di barcode)").toUpperCase();
   const seatRow = parseInt(parsed.seatNumber, 10) || 0;
   const group =
@@ -2611,11 +2705,7 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
   const dt = new Date(flight.departureDate);
   const shortDate = isNaN(dt.getTime())
     ? flight.departureDate
-    : `${dt.getDate().toString().padStart(2, "0")}${MONTHS[dt.getMonth()]}`;
-
-  const barcodeData = `${parsed.pnr}${parsed.ticketNumber}${parsed.seatNumber}`.replace(/[^A-Za-z0-9]/g, "");
-  const barcodeUrl = `https://barcodeapi.org/api/128/${encodeURIComponent(barcodeData)}`;
-  const barcodeFallback = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(barcodeData)}&scale=2&height=12&includetext=false&backgroundcolor=ffffff`;
+    : `${dt.getDate().toString().padStart(2, "0")} ${MONTHS[dt.getMonth()]}`;
 
   const softBg = isBusiness ? "#fef3c7" : softTint(flight.airlineCode);
   const accentText = isBusiness ? "#92400e" : accentTextColor(flight.airlineCode);
@@ -2623,297 +2713,225 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
     ? "from-amber-500 via-yellow-500 to-amber-600"
     : meta.gradient;
 
+  const gate = flight.gateOrCheckpoint || "—";
+  const departIn = departureCountdown(
+    flight.departureDate,
+    flight.departureTime,
+    new Date(last.event.scannedAt),
+  );
+
   return (
     <div className="space-y-3">
       {last.event.ktpVerification && (
         <KtpMatchBadge v={last.event.ktpVerification} />
       )}
-      <div className="relative overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-slate-200/80">
-        <div className={cn("h-1.5 w-full bg-gradient-to-r", accentGradient)} />
+      <div className="relative overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-slate-200/80">
+        <div className={cn("h-2 w-full bg-gradient-to-r", accentGradient)} />
 
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_220px]">
-        {/* MAIN */}
-        <div className="relative bg-white p-5">
-          <Plane className="pointer-events-none absolute right-2 top-1/3 h-48 w-48 -translate-y-1/2 rotate-[18deg] text-slate-50" />
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_230px]">
+          {/* ── Bagian utama ── */}
+          <div className="relative min-w-0 p-6">
+            <Plane className="pointer-events-none absolute -right-6 top-6 h-44 w-44 rotate-[18deg] text-slate-50" />
 
-          {/* Header */}
-          <div className="relative flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {meta.logoSrc ? (
-                <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-slate-200">
-                  <Image
-                    src={meta.logoSrc}
-                    alt={meta.name}
-                    width={44}
-                    height={44}
-                    className="h-full w-full object-contain"
-                  />
+            {/* Maskapai + nomor penerbangan */}
+            <div className="relative flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                {meta.logoSrc ? (
+                  <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-slate-200">
+                    <Image
+                      src={meta.logoSrc}
+                      alt={meta.name}
+                      width={48}
+                      height={48}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className={cn(
+                    "grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-sm font-bold text-white",
+                    meta.gradient,
+                  )}>
+                    {flight.airlineCode}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate text-base font-bold tracking-tight" style={{ color: accentText }}>
+                    {meta.name}
+                  </p>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+                    Boarding Pass · {isBusiness ? "Business" : "Economy"}
+                  </p>
                 </div>
-              ) : (
-                <div className={cn(
-                  "grid h-11 w-11 place-items-center rounded-xl bg-gradient-to-br text-sm font-bold text-white",
-                  meta.gradient,
-                )}>
-                  {flight.airlineCode}
+              </div>
+              <div className="shrink-0 rounded-2xl px-3.5 py-2 text-right" style={{ backgroundColor: softBg }}>
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
+                  Penerbangan
+                </p>
+                <p className="font-mono text-2xl font-black leading-none tracking-tight" style={{ color: accentText }}>
+                  {flight.flightNumber}
+                </p>
+              </div>
+            </div>
+
+            {/* Nama penumpang */}
+            <div className="relative mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+                Penumpang
+              </p>
+              <p className="mt-0.5 truncate text-2xl font-black tracking-tight text-slate-900" title={name}>
+                {name}
+              </p>
+            </div>
+
+            {/* Rute */}
+            <div className="relative mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-2xl bg-slate-50 px-5 py-4 ring-1 ring-slate-100">
+              <div className="min-w-0">
+                <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
+                  {flight.originAirport}
+                </p>
+                <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
+                  {originCity}
+                </p>
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-px w-8 border-t-2 border-dashed border-slate-300 sm:w-14" />
+                  <span
+                    className="grid h-8 w-8 place-items-center rounded-full text-white shadow"
+                    style={{ backgroundColor: accentText }}
+                  >
+                    <Plane className="h-4 w-4 rotate-45" />
+                  </span>
+                  <span className="h-px w-8 border-t-2 border-dashed border-slate-300 sm:w-14" />
                 </div>
-              )}
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                  {shortDate} · {flight.departureTime}
+                </p>
+              </div>
+              <div className="min-w-0 text-right">
+                <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
+                  {flight.destinationAirport}
+                </p>
+                <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
+                  {destCity}
+                </p>
+              </div>
+            </div>
+
+            {/* Detail */}
+            <div className="relative mt-4 grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-5">
+              <DetailCell label="PNR" value={parsed.pnr} mono accent={accentText} />
+              <DetailCell label="Tiket" value={parsed.ticketNumber} mono />
+              <DetailCell label="Kelas" value={isBusiness ? "Business" : "Economy"} accent={isBusiness ? "#92400e" : undefined} />
+              <DetailCell label="Grup" value={group} />
+              <DetailCell label="Seq" value={seq} mono />
+            </div>
+          </div>
+
+          {/* Perforasi */}
+          <div className="relative hidden md:block">
+            <div className="absolute -left-2 top-0 h-4 w-4 -translate-y-1/2 rounded-full bg-slate-100" />
+            <div className="absolute -left-2 bottom-0 h-4 w-4 translate-y-1/2 rounded-full bg-slate-100" />
+            <div className="mx-auto h-full w-px border-l-2 border-dashed border-slate-300" />
+          </div>
+
+          {/* ── Stub: info yang dicari penumpang ── */}
+          <div className="relative flex flex-col overflow-hidden p-5" style={{ backgroundColor: softBg }}>
+            <Plane className="pointer-events-none absolute -right-5 bottom-3 h-28 w-28 rotate-[18deg] text-white/50" />
+
+            <span className="relative inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow">
+              <CheckCircle2 className="h-3 w-3" /> Terverifikasi
+            </span>
+
+            <div className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-1">
               <div>
-                <p className="text-base font-bold tracking-tight" style={{ color: accentText }}>
-                  {meta.name}
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
+                  Gate
                 </p>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
-                  Boarding Pass
+                <p
+                  className={cn(
+                    "font-black leading-none tracking-tight",
+                    gate.length > 4 ? "text-3xl" : "text-6xl",
+                  )}
+                  style={{ color: accentText }}
+                >
+                  {gate}
+                </p>
+              </div>
+              <div className="md:border-t md:border-black/10 md:pt-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
+                  Kursi
+                </p>
+                <p className="text-5xl font-black leading-none tracking-tight text-slate-900">
+                  {parsed.seatNumber}
                 </p>
               </div>
             </div>
-            <div className="rounded-xl px-3 py-1.5 text-right" style={{ backgroundColor: softBg }}>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
-                Group
+
+            <div className="relative mt-4 rounded-2xl bg-white/75 px-3.5 py-2.5 ring-1 ring-white/80 backdrop-blur md:mt-auto">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                <Clock className="h-3 w-3" /> Berangkat {flight.departureTime}
               </p>
-              <p className="text-xl font-bold leading-none" style={{ color: accentText }}>
-                {group}
+              <p className="mt-0.5 text-[15px] font-black leading-tight text-slate-900">
+                {departIn}
               </p>
             </div>
-          </div>
-
-          {/* NAME */}
-          <div className="relative mt-4">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
-              Name
-            </p>
-            <p className="mt-1 text-lg font-bold uppercase tracking-tight text-slate-900">
-              {name}
-            </p>
-          </div>
-
-          {/* From / To */}
-          <div className="relative mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
-                From
-              </p>
-              <p className="mt-1 text-xl font-bold leading-tight text-slate-900">
-                {originCity}
-              </p>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {flight.originAirport}
-              </p>
-            </div>
-            <div className="flex flex-col items-center gap-1.5">
-              <div className="h-px w-10 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-              <span
-                className="grid h-7 w-7 place-items-center rounded-full text-white"
-                style={{ backgroundColor: accentText }}
-              >
-                <Plane className="h-3.5 w-3.5 rotate-90" />
-              </span>
-              <div className="h-px w-10 bg-gradient-to-r from-transparent via-slate-300 to-transparent" />
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
-                To
-              </p>
-              <p className="mt-1 text-xl font-bold leading-tight text-slate-900">
-                {destCity}
-              </p>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                {flight.destinationAirport}
-              </p>
-            </div>
-          </div>
-
-          {/* PNR pill */}
-          <div className="relative mt-4">
-            <span className="inline-flex items-baseline gap-2 rounded-lg px-3 py-1.5" style={{ backgroundColor: softBg }}>
-              <span className="text-[9px] font-semibold uppercase tracking-[0.25em] text-slate-500">PNR</span>
-              <span className="font-mono text-sm font-bold tracking-widest" style={{ color: accentText }}>
-                {parsed.pnr}
-              </span>
-            </span>
-          </div>
-
-          {/* Detail grid */}
-          <div className="relative mt-4 grid grid-cols-4 gap-x-3 gap-y-3 rounded-xl bg-slate-50/70 p-3.5 ring-1 ring-slate-100">
-            <BPCell label="Date" value={shortDate} />
-            <BPCell label="Flight" value={flight.flightNumber} />
-            <BPCell label="Seat" value={parsed.seatNumber} bold accent={accentText} />
-            <BPCell label="Gate" value={flight.gateOrCheckpoint} bold accent={accentText} />
-            <BPCell label="Boarding" value={flight.departureTime} />
-            <BPCell label="Class" value={isBusiness ? "BUSINESS" : "ECONOMY"} accent={isBusiness ? "#92400e" : undefined} />
-            <BPCell label="Seq" value={seq} />
-            <BPCell label="Ticket" value={parsed.ticketNumber} mono />
-          </div>
-
-          {/* Barcode row */}
-          <div className="relative mt-4">
-            <div className="grid h-12 place-items-center rounded-md bg-white px-2 py-1 ring-1 ring-slate-200">
-              <img
-                src={barcodeUrl}
-                alt="Barcode"
-                className="h-10 w-full object-contain"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).src = barcodeFallback;
-                }}
-              />
-            </div>
-            <p className="mt-1 text-center font-mono text-[10px] tracking-widest text-slate-500">
-              {parsed.pnr} · {parsed.ticketNumber} · {parsed.seatNumber}
-            </p>
           </div>
         </div>
 
-        {/* Perforation */}
-        <div className="relative hidden md:block">
-          <div className="absolute -left-2 top-0 h-4 w-4 -translate-y-1/2 rounded-full bg-slate-100" />
-          <div className="absolute -left-2 bottom-0 h-4 w-4 translate-y-1/2 rounded-full bg-slate-100" />
-          <div className="mx-auto h-full w-px border-l-2 border-dashed border-slate-300" />
+        {/* Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-2.5">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+            <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
+            Divalidasi SIPANDAI · {new Date(last.event.scannedAt).toLocaleTimeString("id-ID")}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-black" style={{ color: accentText }}>
+            Silakan menuju Gate {gate}
+            <ArrowRight className="h-4 w-4" />
+          </span>
         </div>
-
-        {/* STUB — face photo + key details */}
-        <div className="relative overflow-hidden p-4" style={{ backgroundColor: softBg }}>
-          <div className={cn("absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r", meta.gradient)} />
-          <Plane className="pointer-events-none absolute -right-4 bottom-4 h-28 w-28 rotate-[18deg] text-white/50" />
-
-          <div className="relative mt-1 flex items-center gap-2">
-            {meta.logoSrc ? (
-              <div className="grid h-8 w-8 place-items-center overflow-hidden rounded-lg bg-white p-1 ring-1 ring-slate-200">
-                <Image
-                  src={meta.logoSrc}
-                  alt={meta.name}
-                  width={32}
-                  height={32}
-                  className="h-full w-full object-contain"
-                />
-              </div>
-            ) : (
-              <div className={cn("grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br text-[10px] font-bold text-white", meta.gradient)}>
-                {flight.airlineCode}
-              </div>
-            )}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em]" style={{ color: accentText }}>
-                {meta.name}
-              </p>
-              <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
-                Boarding Pass
-              </p>
-            </div>
-          </div>
-
-          {/* Face photo */}
-          <div className="relative mt-3 flex flex-col items-center">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
-              Foto Penumpang
-            </p>
-            <div className="mt-1.5">
-              {faceUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={faceUrl}
-                  alt="Foto penumpang"
-                  className="h-28 w-28 rounded-xl object-cover ring-2 ring-white shadow-md"
-                />
-              ) : (
-                <div className="flex h-28 w-28 flex-col items-center justify-center rounded-xl bg-white/70 text-slate-400 ring-2 ring-white">
-                  <ImageIcon className="h-6 w-6" />
-                  <span className="mt-1 text-[9px]">no photo</span>
-                </div>
-              )}
-            </div>
-            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow">
-              <CheckCircle2 className="h-2.5 w-2.5" /> Verified
-            </span>
-          </div>
-
-          <div className="relative mt-3 grid grid-cols-2 gap-x-2.5 gap-y-2">
-            <StubCell label="Seat" value={parsed.seatNumber} accent={accentText} big />
-            <StubCell label="Gate" value={flight.gateOrCheckpoint} accent={accentText} big />
-            <StubCell label="Flight" value={flight.flightNumber} />
-            <StubCell label="Date" value={shortDate} />
-            <StubCell label="Boarding" value={flight.departureTime} />
-            <StubCell label="Class" value={isBusiness ? "BIZ" : "ECO"} accent={isBusiness ? "#92400e" : undefined} />
-          </div>
-
-          <div className="relative mt-3 rounded-md bg-white/70 px-2.5 py-1.5 ring-1 ring-white/80 backdrop-blur">
-            <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
-              PNR · Seq
-            </p>
-            <p className="font-mono text-xs font-bold tracking-wider" style={{ color: accentText }}>
-              {parsed.pnr} · {seq}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-        <span className="inline-flex items-center gap-1.5">
-          <ShieldCheck className="h-3 w-3 text-emerald-500" />
-          SIPANDAI · Verified · {new Date(last.event.scannedAt).toLocaleTimeString("id-ID")}
-        </span>
-        <span>
-          {flight.originAirport} → {flight.destinationAirport} · {flight.departureDate}
-        </span>
-      </div>
       </div>
     </div>
   );
 }
 
-function BPCell({
+/** "dalam 1 j 05 m" / "berangkat sekarang" / "sudah lewat jadwal" relatif ke `at`. */
+function departureCountdown(date: string, time: string, at: Date): string {
+  const dep = new Date(`${date}T${time}:00`);
+  if (isNaN(dep.getTime())) return "—";
+  const mins = Math.round((dep.getTime() - at.getTime()) / 60_000);
+  if (mins < -5) return "Sudah lewat jadwal";
+  if (mins <= 5) return "Berangkat sekarang";
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0
+    ? `dalam ${h} j ${m.toString().padStart(2, "0")} m`
+    : `dalam ${m} menit`;
+}
+
+function DetailCell({
   label,
   value,
-  bold,
   mono,
   accent,
 }: {
   label: string;
   value: string;
-  bold?: boolean;
   mono?: boolean;
   accent?: string;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
         {label}
       </p>
       <p
         className={cn(
-          "mt-0.5 leading-none",
-          bold ? "text-lg font-bold" : "text-sm font-semibold",
-          mono ? "font-mono tracking-tight" : "",
+          "mt-0.5 truncate text-sm font-bold leading-tight",
+          mono && "font-mono tracking-tight",
         )}
         style={{ color: accent ?? "#0f172a" }}
-      >
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function StubCell({
-  label,
-  value,
-  big,
-  accent,
-}: {
-  label: string;
-  value: string;
-  big?: boolean;
-  accent?: string;
-}) {
-  return (
-    <div>
-      <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-500">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "font-bold leading-tight",
-          big ? "text-sm" : "text-[11px]",
-        )}
-        style={{ color: accent ?? "#0f172a" }}
+        title={value}
       >
         {value}
       </p>
@@ -2953,6 +2971,43 @@ function accentTextColor(code: string): string {
 
 /* ─────────────── Result modal body ─────────────── */
 
+/** Arahan singkat per status untuk penumpang & petugas. */
+const RESULT_GUIDANCE: Partial<Record<ScanResultStatus, string>> = {
+  DUPLICATE_SCAN:
+    "Boarding pass ini sudah divalidasi hari ini. Petugas: pastikan pemegangnya penumpang yang sama.",
+  FLIGHT_NOT_TODAY:
+    "Penerbangan ini bukan untuk hari ini. Silakan menuju konter maskapai.",
+  FLIGHT_NOT_ACTIVE:
+    "Boarding belum dibuka atau sudah ditutup. Silakan tunggu atau hubungi konter maskapai.",
+  UNKNOWN_FLIGHT:
+    "Nomor penerbangan tidak ada di jadwal hari ini. Silakan cek ke konter maskapai.",
+  INVALID_BARCODE:
+    "Barcode tidak terbaca. Scan ulang — pastikan layar ponsel terang dan barcode tidak terlipat.",
+  KTP_MISMATCH:
+    "Identitas tidak sesuai dengan boarding pass. Petugas akan memeriksa secara manual.",
+};
+
+const RESULT_TONE: Record<
+  "success" | "warning" | "danger",
+  { box: string; icon: string; text: string }
+> = {
+  success: {
+    box: "bg-emerald-50 ring-emerald-200 dark:bg-emerald-500/10 dark:ring-emerald-500/30",
+    icon: "bg-emerald-500 text-white",
+    text: "text-emerald-900 dark:text-emerald-100",
+  },
+  warning: {
+    box: "bg-amber-50 ring-amber-200 dark:bg-amber-500/10 dark:ring-amber-500/30",
+    icon: "bg-amber-500 text-white",
+    text: "text-amber-900 dark:text-amber-100",
+  },
+  danger: {
+    box: "bg-rose-50 ring-rose-200 dark:bg-rose-500/10 dark:ring-rose-500/30",
+    icon: "bg-rose-500 text-white",
+    text: "text-rose-900 dark:text-rose-100",
+  },
+};
+
 function ResultModalBody({
   last,
   meta,
@@ -2960,72 +3015,80 @@ function ResultModalBody({
   last: LastResult;
   meta: (typeof STATUS_META)[ScanResultStatus];
 }) {
+  const tone = RESULT_TONE[meta.modalTone];
+  const guidance = RESULT_GUIDANCE[last.event.resultStatus];
+  const airline = last.flight ? getAirlineMeta(last.flight.airlineCode) : null;
+  // Barcode tak terbaca → tak ada data penerbangan; cukup tampilkan arahan.
+  const hasInfo = !!(last.flightNumber || last.passengerName || last.seat);
+
   return (
-    <div className="grid gap-5 md:grid-cols-[1fr_auto]">
-      <div className="min-w-0">
-        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-ink-subtle">
-          Flight
-        </p>
-        <p className="mt-0.5 text-4xl font-black tracking-tight text-slate-900 dark:text-ink">
-          {last.flightNumber ?? "—"}
-        </p>
-        {last.route && (
-          <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-600 dark:text-ink-muted">
-            <Plane className="h-3.5 w-3.5 text-blue-500 dark:text-cyan-300" />
-            {last.route}
-          </p>
-        )}
-        <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-          {last.passengerName && (
-            <div className="rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 dark:bg-white/5 dark:ring-hairline-soft">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-ink-subtle">
-                Penumpang
+    <div className="space-y-4">
+      {/* Ringkasan penerbangan */}
+      {hasInfo && (
+      <div className="relative overflow-hidden rounded-2xl bg-slate-50 px-5 py-4 ring-1 ring-slate-100 dark:bg-white/5 dark:ring-hairline-soft">
+        <div className={cn("absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b", meta.bar)} />
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-ink-subtle">
+              Penerbangan
+            </p>
+            <p className="mt-0.5 font-mono text-4xl font-black leading-none tracking-tight text-slate-900 dark:text-ink">
+              {last.flightNumber ?? "—"}
+            </p>
+            {(last.route || airline) && (
+              <p className="mt-1.5 flex items-center gap-1.5 truncate text-sm font-semibold text-slate-600 dark:text-ink-muted">
+                <Plane className="h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-cyan-300" />
+                {[airline?.name, last.route].filter(Boolean).join(" · ")}
               </p>
-              <p className="mt-0.5 flex items-center gap-1.5 truncate font-bold text-slate-800 dark:text-ink">
-                <User className="h-3.5 w-3.5 text-slate-400 dark:text-ink-subtle" />
-                {last.passengerName}
-              </p>
-            </div>
-          )}
+            )}
+          </div>
           {last.seat && (
-            <div className="rounded-xl bg-slate-50 px-3 py-2 ring-1 ring-slate-100 dark:bg-white/5 dark:ring-hairline-soft">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-ink-subtle">
-                Seat
+            <div className="shrink-0 text-right">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-ink-subtle">
+                Kursi
               </p>
-              <p className="mt-0.5 flex items-center gap-1.5 font-mono text-base font-bold text-slate-900 dark:text-ink">
-                <Armchair className="h-3.5 w-3.5 text-slate-400 dark:text-ink-subtle" />
+              <p className="mt-0.5 flex items-center justify-end gap-1.5 text-3xl font-black leading-none text-slate-900 dark:text-ink">
+                <Armchair className="h-5 w-5 text-slate-400 dark:text-ink-subtle" />
                 {last.seat}
               </p>
             </div>
           )}
         </div>
-        {last.event.ktpVerification && (
-          <div className="mt-3">
-            <KtpMatchBadge v={last.event.ktpVerification} />
+        {last.passengerName && (
+          <div className="mt-3 flex items-center gap-2 border-t border-slate-200/70 pt-3 dark:border-white/10">
+            <User className="h-4 w-4 shrink-0 text-slate-400 dark:text-ink-subtle" />
+            <span className="truncate text-[15px] font-bold uppercase tracking-tight text-slate-800 dark:text-ink">
+              {last.passengerName}
+            </span>
           </div>
         )}
-        <p className="mt-4 text-[10px] text-slate-400 dark:text-ink-subtle">
-          {new Date(last.event.scannedAt).toLocaleString("id-ID")}
-        </p>
       </div>
-      <div className="flex items-start justify-end">
-        {last.faceUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={last.faceUrl}
-            alt="Foto wajah penumpang"
-            className={cn(
-              "h-32 w-32 rounded-2xl object-cover ring-2 ring-white shadow-lg",
-              meta.glow,
+      )}
+
+      {/* Arahan */}
+      {guidance && (
+        <div className={cn("flex items-start gap-3 rounded-2xl px-4 py-3 ring-1", tone.box)}>
+          <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-xl", tone.icon)}>
+            {meta.modalTone === "danger" ? (
+              <XCircle className="h-4 w-4" />
+            ) : (
+              <AlertTriangle className="h-4 w-4" />
             )}
-          />
-        ) : (
-          <div className="flex h-32 w-32 flex-col items-center justify-center rounded-2xl bg-slate-100 text-slate-400 ring-1 ring-slate-200 dark:bg-white/5 dark:text-ink-subtle dark:ring-hairline">
-            <ImageIcon className="h-6 w-6" />
-            <span className="mt-1 text-[10px]">no photo</span>
-          </div>
-        )}
-      </div>
+          </span>
+          <p className={cn("text-[13.5px] font-semibold leading-snug", tone.text)}>
+            {guidance}
+          </p>
+        </div>
+      )}
+
+      {last.event.ktpVerification && (
+        <KtpMatchBadge v={last.event.ktpVerification} />
+      )}
+
+      <p className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-ink-subtle">
+        <Clock className="h-3 w-3" />
+        {new Date(last.event.scannedAt).toLocaleString("id-ID")}
+      </p>
     </div>
   );
 }
