@@ -27,17 +27,29 @@ Opsi lain: `--server=https://alamat` memakai server tersebut hanya untuk sesi in
 ## Pasang di Lubuntu
 
 Paket hanya untuk **64-bit (x86_64)**. Electron tidak mendukung 32-bit.
+Perangkat **tidak perlu clone project**. Cukup unduh paket dari
+[Releases](https://github.com/elband/manifest-ticket-2/releases), lalu pasang:
 
 ```bash
-sudo apt install ./sipandai-desktop-0.1.0-amd64.deb
+wget https://github.com/elband/manifest-ticket-2/releases/latest/download/sipandai-desktop-amd64.deb
+sudo apt install ./sipandai-desktop-amd64.deb
 ```
 
 Atau pakai AppImage tanpa instalasi:
 
 ```bash
-chmod +x sipandai-desktop-0.1.0-x86_64.AppImage
-./sipandai-desktop-0.1.0-x86_64.AppImage
+wget https://github.com/elband/manifest-ticket-2/releases/latest/download/sipandai-desktop-x86_64.AppImage
+chmod +x sipandai-desktop-x86_64.AppImage
+./sipandai-desktop-x86_64.AppImage
 ```
+
+Bila perangkat tidak punya akses internet (hanya jaringan internal bandara),
+unduh file di komputer lain, lalu salin lewat flashdisk atau taruh di server
+internal. `SHA256SUMS.txt` di halaman release dipakai untuk memastikan file
+tidak rusak: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
+
+Untuk memperbarui aplikasi, unduh `.deb` versi baru dan jalankan `apt install`
+yang sama. Perubahan web SIPANDAI tidak butuh update aplikasi.
 
 Saat pertama kali dibuka, isi alamat server, misalnya `https://192.168.50.156`.
 Di halaman yang sama ada dua centang untuk perangkat kiosk:
@@ -111,9 +123,29 @@ Ikon `build/icon.png` dibuat dari `public/icons/icon.svg` dengan `npm run icon`.
 
 ## Membuat paket .deb / AppImage
 
-Paket Linux **harus dibangun di Linux** (Lubuntu/Ubuntu, WSL, atau server),
-karena electron-builder membutuhkan `fpm` dan alat AppImage yang tidak berjalan
-di Windows.
+Paket dibangun otomatis oleh GitHub Actions
+([.github/workflows/desktop.yml](../.github/workflows/desktop.yml)) di mesin
+Ubuntu milik GitHub.
+
+**Rilis versi baru:** buat tag `desktop-v<versi>` dan push. Versi paket
+diambil dari tag.
+
+```bash
+git tag desktop-v0.1.0
+git push origin desktop-v0.1.0
+```
+
+Sekitar 5 menit kemudian, halaman
+[Releases](https://github.com/elband/manifest-ticket-2/releases) berisi
+`.deb`, AppImage, dan `SHA256SUMS.txt`. Link `releases/latest/download/...` di
+atas otomatis menunjuk ke rilis terbaru.
+
+**Build tanpa rilis:** buka tab Actions → *Desktop (Lubuntu)* → *Run workflow*.
+Paketnya bisa diunduh dari bagian *Artifacts* run tersebut (disimpan 30 hari).
+Setiap push atau PR yang mengubah `desktop/` juga dibangun sebagai pengecekan.
+
+**Build manual** harus dilakukan di Linux, karena electron-builder membutuhkan
+`fpm` dan alat AppImage yang tidak berjalan di Windows:
 
 ```bash
 cd desktop
@@ -121,5 +153,3 @@ npm ci
 npm run dist          # .deb + AppImage → dist/
 npm run dist:deb      # hanya .deb
 ```
-
-Hasilnya ada di `desktop/dist/`.

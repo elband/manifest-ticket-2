@@ -3,6 +3,7 @@
   "productName": "SIPANDAI",
   "version": "0.1.0",
   "description": "Aplikasi desktop SIPANDAI (dashboard admin & mode kiosk) untuk Lubuntu",
+  "homepage": "https://github.com/elband/manifest-ticket-2",
   "private": true,
   "license": "UNLICENSED",
   "author": {

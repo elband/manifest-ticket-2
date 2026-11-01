@@ -1,0 +1,73 @@
+name: Desktop (Lubuntu)
+
+# Membangun aplikasi desktop SIPANDAI (desktop/) jadi .deb & AppImage x64.
+#
+# - Tag `desktop-vX.Y.Z` → build + GitHub Release berisi paketnya. Versi paket
+#   diambil dari tag, jadi package.json tidak wajib diubah.
+# - Run manual (Actions → Desktop (Lubuntu) → Run workflow) → build saja,
+#   paket bisa diunduh dari bagian Artifacts pada run tersebut.
+# - PR/push yang menyentuh desktop/ → build sebagai pengecekan.
+
+on:
+  push:
+    branches: [main]
+    tags: ["desktop-v*"]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  pull_request:
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build .deb & AppImage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - run: npm ci
+
+      - name: Versi dari tag
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        run: npm version "${GITHUB_REF_NAME#desktop-v}" --no-git-tag-version --allow-same-version
+
+      - name: Build
+        run: npx electron-builder --linux deb AppImage --x64 --publish never
+
+      - name: Nama file tetap & checksum
+        working-directory: desktop/dist
+        run: |
+          cp sipandai-desktop-*-amd64.deb sipandai-desktop-amd64.deb
+          cp sipandai-desktop-*-x86_64.AppImage sipandai-desktop-x86_64.AppImage
+          sha256sum *.deb *.AppImage > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sipandai-desktop
+          path: |
+            desktop/dist/*.deb
+            desktop/dist/*.AppImage
+            desktop/dist/SHA256SUMS.txt
+          retention-days: 30
+
+      - name: GitHub Release
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        working-directory: desktop/dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "SIPANDAI Desktop ${GITHUB_REF_NAME#desktop-v}" \
+            --notes "Pasang di Lubuntu (64-bit): \`sudo apt install ./sipandai-desktop-amd64.deb\`. Panduan lengkap: desktop/README.md." \
+            *.deb *.AppImage SHA256SUMS.txt
