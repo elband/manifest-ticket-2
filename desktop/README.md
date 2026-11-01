@@ -7,7 +7,7 @@ web langsung terpakai di aplikasi tanpa perlu memasang ulang.
 
 | Mode | Cara buka | Isi |
 |---|---|---|
-| Dashboard | menu aplikasi **SIPANDAI** / `sipandai-desktop` | jendela biasa (dimaksimalkan), menu Aplikasi & Tampilan, klik kanan Salin/Tempel |
+| Dashboard | menu aplikasi **SIPANDAI** / `sipandai-desktop` | jendela biasa (dimaksimalkan, **F11** = layar penuh), menu Aplikasi & Tampilan, klik kanan Salin/Tempel |
 | Kiosk | **SIPANDAI Kiosk** / `sipandai-desktop --kiosk` | `/scan/kiosk` layar penuh, tanpa menu |
 
 Opsi lain: `--server=https://alamat` memakai server tersebut hanya untuk sesi ini.

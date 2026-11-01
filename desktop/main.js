@@ -439,7 +439,6 @@ function createWindow() {
     icon: ICON,
     backgroundColor: "#0f172a",
     autoHideMenuBar: true,
-    kiosk: IS_KIOSK,
     webPreferences: WEB_PREFERENCES,
   });
 
@@ -455,16 +454,25 @@ function createWindow() {
   });
 
   // Ctrl+Shift+S membuka pengaturan server, juga di mode kiosk (tanpa menu).
+  // F11 ditangani langsung: di Linux akselerator menu yang tersembunyi
+  // (autoHideMenuBar) bisa tidak terbaca. Kiosk selalu layar penuh → abaikan.
   contents.on("before-input-event", (event, input) => {
-    if (input.type === "keyDown" && input.control && input.shift && input.code === "KeyS") {
+    if (input.type !== "keyDown") return;
+    if (input.control && input.shift && input.code === "KeyS") {
       event.preventDefault();
       showPage("setup.html");
+    } else if (input.code === "F11" && !input.isAutoRepeat) {
+      event.preventDefault();
+      if (!IS_KIOSK) mainWindow.setFullScreen(!mainWindow.isFullScreen());
     }
   });
 
   mainWindow.once("ready-to-show", () => {
     if (!IS_KIOSK) mainWindow.maximize();
     mainWindow.show();
+    // Kiosk dipasang setelah jendela tampil, bukan lewat opsi `kiosk`:
+    // Openbox/LXQt bisa membuang layar penuh yang diminta saat `show: false`.
+    if (IS_KIOSK) mainWindow.setKiosk(true);
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
