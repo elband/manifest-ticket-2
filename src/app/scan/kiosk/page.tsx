@@ -1238,6 +1238,11 @@ export default function KioskPage() {
                 ? () => setPowerConfirm("minimize")
                 : undefined
             }
+            onFullscreenBrowser={
+              agentActions.includes("fullscreen-browser")
+                ? () => void runKioskAgentAction("fullscreen-browser")
+                : undefined
+            }
           />
         </div>
       </header>
@@ -2299,6 +2304,7 @@ function KioskMenu({
   onCloseBrowser,
   onShutdown,
   onMinimizeBrowser,
+  onFullscreenBrowser,
 }: {
   isDark: boolean;
   soundOn: boolean;
@@ -2310,6 +2316,12 @@ function KioskMenu({
   onShutdown?: () => void;
   /** Hanya ada bila agen mendukung minimize (xdotool + X11). */
   onMinimizeBrowser?: () => void;
+  /**
+   * Hanya di aplikasi desktop: layar penuh jendela seperti F11 (tanpa judul &
+   * taskbar). Selalu ditampilkan karena ukuran jendela tak cukup untuk menebak
+   * apakah window manager benar-benar memasang layar penuh.
+   */
+  onFullscreenBrowser?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -2412,7 +2424,16 @@ function KioskMenu({
             label={isDark ? "Mode terang" : "Mode gelap"}
             onClick={onToggleTheme}
           />
-          {!browserFullscreen && (
+          {onFullscreenBrowser ? (
+            <MenuItem
+              icon={<Maximize className="h-4 w-4" />}
+              label="Layar penuh (F11)"
+              onClick={() => {
+                setOpen(false);
+                onFullscreenBrowser();
+              }}
+            />
+          ) : !browserFullscreen && (
             <MenuItem
               icon={isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
               label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}

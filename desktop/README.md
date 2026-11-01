@@ -8,7 +8,7 @@ web langsung terpakai di aplikasi tanpa perlu memasang ulang.
 | Mode | Cara buka | Isi |
 |---|---|---|
 | Dashboard | menu aplikasi **SIPANDAI** / `sipandai-desktop` | jendela biasa (dimaksimalkan, **F11** = layar penuh), menu Aplikasi & Tampilan, klik kanan Salin/Tempel |
-| Kiosk | **SIPANDAI Kiosk** / `sipandai-desktop --kiosk` | `/scan/kiosk` layar penuh, tanpa menu |
+| Kiosk | **SIPANDAI Kiosk** / `sipandai-desktop --kiosk` | `/scan/kiosk` layar penuh tanpa judul jendela & taskbar, tanpa menu |
 
 Opsi lain: `--server=https://alamat` memakai server tersebut hanya untuk sesi ini.
 
@@ -20,6 +20,10 @@ Opsi lain: `--server=https://alamat` memakai server tersebut hanya untuk sesi in
   otomatis). Agent tetap diperlukan bila kiosk masih dibuka lewat Chromium.
 - Izin kamera dan layar penuh langsung diberikan, **hanya** untuk alamat server
   SIPANDAI.
+- Bila judul jendela atau taskbar masih terlihat di kiosk (window manager
+  menolak layar penuh), tekan **F11** atau menu ⚙ → **Layar penuh (F11)**.
+  Aplikasi juga memasang ulang layar penuh otomatis beberapa detik setelah
+  dibuka atau dipulihkan dari Perkecil.
 - Tautan ke situs lain dibuka di browser sistem, tidak di dalam aplikasi.
 - Bila server tidak terjangkau, misalnya Wi-Fi belum siap saat boot, muncul
   layar "Server tidak dapat dihubungi" yang mencoba lagi otomatis setiap 15 detik.

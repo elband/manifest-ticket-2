@@ -17,7 +17,12 @@ const AGENT_URL = (
   process.env.NEXT_PUBLIC_KIOSK_AGENT_URL ?? "http://127.0.0.1:47800"
 ).replace(/\/$/, "");
 
-export type KioskAgentAction = "close-browser" | "shutdown" | "minimize-browser";
+/** "fullscreen-browser" hanya ada di aplikasi desktop (layar penuh seperti F11). */
+export type KioskAgentAction =
+  | "close-browser"
+  | "shutdown"
+  | "minimize-browser"
+  | "fullscreen-browser";
 
 /** Jembatan dari desktop/preload.js; hanya ada di aplikasi desktop SIPANDAI. */
 type DesktopBridge = {

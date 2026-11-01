@@ -16,7 +16,16 @@
  * proses ini, menggantikan kiosk-agent/ yang dibutuhkan bila memakai browser.
  */
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  Menu,
+  dialog,
+  ipcMain,
+  screen,
+  session,
+  shell,
+} = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -130,6 +139,7 @@ function canShutdown() {
 
 function availableActions() {
   const actions = ["close-browser", "minimize-browser"];
+  if (IS_KIOSK) actions.push("fullscreen-browser");
   if (canShutdown()) actions.push("shutdown");
   return actions;
 }
@@ -152,6 +162,52 @@ function shutdown() {
   });
 }
 
+function coversDisplay(win) {
+  const b = win.getBounds();
+  const d = screen.getDisplayMatching(b).bounds;
+  return (
+    b.x <= d.x &&
+    b.y <= d.y &&
+    b.x + b.width >= d.x + d.width &&
+    b.y + b.height >= d.y + d.height
+  );
+}
+
+/**
+ * Layar penuh kiosk seperti F11: tanpa judul jendela & taskbar. Window manager
+ * Lubuntu (Openbox/LXQt) kadang mengabaikan permintaan, terutama sesaat setelah
+ * jendela tampil → periksa beberapa kali dan minta ulang. Bila tetap gagal,
+ * bentangkan jendela (tanpa bingkai) menutupi seluruh layar di atas taskbar.
+ */
+function enterKiosk(win) {
+  win.setKiosk(true);
+  const delays = [400, 1200, 3000];
+  delays.forEach((ms, i) => {
+    setTimeout(() => {
+      if (win.isDestroyed() || win.isMinimized()) return;
+      if (win.isFullScreen() && coversDisplay(win)) return;
+      if (i < delays.length - 1) {
+        // Lepas lalu minta lagi supaya window manager memprosesnya ulang.
+        win.setKiosk(false);
+        setTimeout(() => !win.isDestroyed() && win.setKiosk(true), 150);
+      } else {
+        win.setBounds(screen.getDisplayMatching(win.getBounds()).bounds);
+        win.setAlwaysOnTop(true, "screen-saver");
+      }
+    }, ms);
+  });
+  return true;
+}
+
+/** Keluar dari layar penuh kiosk supaya dialog password pembaruan terlihat. */
+function installUpdate() {
+  if (mainWindow && IS_KIOSK) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setKiosk(false);
+  }
+  return updater.install();
+}
+
 function minimize() {
   const win = mainWindow;
   if (!win) return false;
@@ -167,11 +223,12 @@ function minimize() {
     done = true;
     win.minimize();
     win.once("restore", () => {
-      if (!win.isDestroyed()) win.setKiosk(true);
+      if (!win.isDestroyed()) enterKiosk(win);
     });
   };
   win.once("leave-full-screen", () => setTimeout(finish, 50));
   setTimeout(finish, 1000); // cadangan bila event tidak muncul
+  win.setAlwaysOnTop(false);
   win.setKiosk(false);
   return true;
 }
@@ -183,6 +240,8 @@ async function runAction(action) {
       return true;
     case "minimize-browser":
       return minimize();
+    case "fullscreen-browser":
+      return mainWindow ? enterKiosk(mainWindow) : false;
     case "shutdown":
       return canShutdown() ? shutdown() : false;
     default:
@@ -277,7 +336,7 @@ handleLocal("setup:open", () => showPage("setup.html"));
 handleLocal("setup:cancel", () => loadApp());
 handleLocal("setup:quit", () => app.quit());
 handleLocal("setup:update-check", () => updater.check());
-handleLocal("setup:update-install", () => updater.install());
+handleLocal("setup:update-install", () => installUpdate());
 handleLocal("setup:shortcut", (kind, enabled) =>
   shortcuts.set(kind, Boolean(enabled), iconForShortcut()),
 );
@@ -439,6 +498,9 @@ function createWindow() {
     icon: ICON,
     backgroundColor: "#0f172a",
     autoHideMenuBar: true,
+    // Kiosk tanpa bingkai: judul jendela tidak muncul walau window manager
+    // menolak layar penuh.
+    frame: !IS_KIOSK,
     webPreferences: WEB_PREFERENCES,
   });
 
@@ -455,7 +517,8 @@ function createWindow() {
 
   // Ctrl+Shift+S membuka pengaturan server, juga di mode kiosk (tanpa menu).
   // F11 ditangani langsung: di Linux akselerator menu yang tersembunyi
-  // (autoHideMenuBar) bisa tidak terbaca. Kiosk selalu layar penuh → abaikan.
+  // (autoHideMenuBar) bisa tidak terbaca. Di kiosk F11 hanya memasang ulang
+  // layar penuh, tidak pernah keluar darinya.
   contents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown") return;
     if (input.control && input.shift && input.code === "KeyS") {
@@ -463,7 +526,8 @@ function createWindow() {
       showPage("setup.html");
     } else if (input.code === "F11" && !input.isAutoRepeat) {
       event.preventDefault();
-      if (!IS_KIOSK) mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      if (IS_KIOSK) enterKiosk(mainWindow);
+      else mainWindow.setFullScreen(!mainWindow.isFullScreen());
     }
   });
 
@@ -472,7 +536,7 @@ function createWindow() {
     mainWindow.show();
     // Kiosk dipasang setelah jendela tampil, bukan lewat opsi `kiosk`:
     // Openbox/LXQt bisa membuang layar penuh yang diminta saat `show: false`.
-    if (IS_KIOSK) mainWindow.setKiosk(true);
+    if (IS_KIOSK) enterKiosk(mainWindow);
   });
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -502,7 +566,7 @@ async function offerUpdate(version) {
     defaultId: 0,
     cancelId: 1,
   });
-  if (response === 0) updater.install();
+  if (response === 0) installUpdate();
 }
 
 // ─────────── Siklus hidup ───────────
