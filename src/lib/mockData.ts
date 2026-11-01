@@ -1,46 +1,69 @@
 import { Flight, User } from "./types";
 import { todayDateString, tomorrowDateString, uid } from "./utils";
 
-export const DUMMY_USERS: User[] = [
-  {
-    id: "u_admin",
-    email: "admin@airport.test",
-    password: "password",
-    name: "Admin Operator",
-    role: "admin",
-  },
-  {
-    id: "u_supervisor",
-    email: "supervisor@airport.test",
-    password: "password",
-    name: "Supervisor Bandara",
-    role: "supervisor",
-  },
-  {
-    id: "u_security",
-    email: "security@airport.test",
-    password: "password",
-    pin: "1234",
-    name: "Petugas Security",
-    role: "security",
-  },
-  {
-    id: "u_security_a",
-    email: "petugas.a@airport.test",
-    password: "password",
-    pin: "2345",
-    name: "Petugas A",
-    role: "security",
-  },
-  {
-    id: "u_security_b",
-    email: "petugas.b@airport.test",
-    password: "password",
-    pin: "3456",
-    name: "Petugas B",
-    role: "security",
-  },
-];
+/**
+ * Akun demo untuk login lokal (offline, tanpa backend). Hanya aktif di dev:
+ * di build produksi daftarnya kosong, jadi login wajib lewat backend.
+ *
+ * Kode yang menyembunyikan STRING kredensial harus menulis
+ * `process.env.NODE_ENV !== "production"` secara literal di tempatnya: Next
+ * meng-inline nilainya sehingga cabang demo terbuang dari bundle. Konstanta
+ * hasil impor antar-modul tidak ikut dilipat oleh minifier.
+ */
+export const DEMO_USERS_ENABLED = process.env.NODE_ENV !== "production";
+
+/** ID akun demo, untuk membuang sesi demo lama di build produksi. */
+export const DEMO_USER_IDS: ReadonlySet<string> = new Set([
+  "u_admin",
+  "u_supervisor",
+  "u_security",
+  "u_security_a",
+  "u_security_b",
+]);
+
+export const DUMMY_USERS: User[] =
+  process.env.NODE_ENV !== "production"
+    ? [
+        {
+          id: "u_admin",
+          email: "admin@airport.test",
+          password: "password",
+          name: "Admin Operator",
+          role: "admin",
+        },
+        {
+          id: "u_supervisor",
+          email: "supervisor@airport.test",
+          password: "password",
+          name: "Supervisor Bandara",
+          role: "supervisor",
+        },
+        {
+          id: "u_security",
+          email: "security@airport.test",
+          password: "password",
+          pin: "1234",
+          name: "Petugas Security",
+          role: "security",
+        },
+        {
+          id: "u_security_a",
+          email: "petugas.a@airport.test",
+          password: "password",
+          pin: "2345",
+          name: "Petugas A",
+          role: "security",
+        },
+        {
+          id: "u_security_b",
+          email: "petugas.b@airport.test",
+          password: "password",
+          pin: "3456",
+          name: "Petugas B",
+          role: "security",
+        },
+      ]
+    : [];
 
 export function buildSeedFlights(): Flight[] {
   const today = todayDateString();

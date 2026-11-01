@@ -40,6 +40,10 @@ import {
   subscribeApiOutbox,
 } from "@/lib/api/outbox";
 
+// Kredensial seed backend hanya ditampilkan/diisi di dev (literal agar
+// teksnya terbuang dari bundle produksi).
+const SHOW_SEED_CREDENTIALS = process.env.NODE_ENV !== "production";
+
 export default function ConnectPage() {
   const toast = useToast();
   const [authed, setAuthed] = useState(false);
@@ -55,7 +59,7 @@ export default function ConnectPage() {
   });
 
   // Login form
-  const [email, setEmail] = useState("admin@afvs.local");
+  const [email, setEmail] = useState(SHOW_SEED_CREDENTIALS ? "admin@afvs.local" : "");
   const [password, setPassword] = useState("");
   const [loggingIn, setLoggingIn] = useState(false);
 
@@ -260,11 +264,15 @@ export default function ConnectPage() {
                 </label>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="inline-flex items-center gap-1.5 text-[11px] text-ink-subtle">
-                  <KeyRound className="h-3.5 w-3.5" />
-                  Seed: admin@afvs.local / ChangeMe!2026 · operator@afvs.local /
-                  operator123
-                </p>
+                {SHOW_SEED_CREDENTIALS ? (
+                  <p className="inline-flex items-center gap-1.5 text-[11px] text-ink-subtle">
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Seed: admin@afvs.local / ChangeMe!2026 · operator@afvs.local /
+                    operator123
+                  </p>
+                ) : (
+                  <span />
+                )}
                 <button
                   type="button"
                   onClick={handleLogin}

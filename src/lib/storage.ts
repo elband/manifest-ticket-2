@@ -1,7 +1,12 @@
 "use client";
 
 import { Flight, PassengerRecord, ScanEvent, SessionUser, User } from "./types";
-import { DUMMY_USERS, buildSeedFlights } from "./mockData";
+import {
+  DEMO_USERS_ENABLED,
+  DEMO_USER_IDS,
+  DUMMY_USERS,
+  buildSeedFlights,
+} from "./mockData";
 import { buildFlightsFromCustomSeed } from "./seedSnapshot";
 import { manifestDedupKey } from "./manifest";
 
@@ -94,6 +99,9 @@ export function resetAll() {
 
 /* Users */
 export function getUsers(): User[] {
+  // Produksi: tidak ada akun lokal (satu-satunya isinya akun demo, termasuk
+  // salinan lama di localStorage) → login hanya lewat backend.
+  if (!DEMO_USERS_ENABLED) return [];
   const stored = read<User[]>(KEYS.users, DUMMY_USERS);
   const byId = new Map(stored.map((u) => [u.id, u]));
   let changed = false;
@@ -118,7 +126,13 @@ export function getUsers(): User[] {
 
 /* Session */
 export function getSession(): SessionUser | null {
-  return read<SessionUser | null>(KEYS.session, null);
+  const session = read<SessionUser | null>(KEYS.session, null);
+  // Sesi akun demo yang tersisa dari sebelum akun demo dimatikan → logout.
+  if (session && !DEMO_USERS_ENABLED && DEMO_USER_IDS.has(session.id)) {
+    setSession(null);
+    return null;
+  }
+  return session;
 }
 
 export function setSession(user: SessionUser | null) {

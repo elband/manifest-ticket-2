@@ -21,14 +21,30 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ensureSeed, getSession, setSession } from "@/lib/storage";
 import { login, loginWithPin } from "@/lib/auth";
-import { apiLogin, apiLoginPin } from "@/lib/api/client";
+import { apiLogin, apiLoginPin, type ApiResult } from "@/lib/api/client";
 import { saveSettings } from "@/lib/settings";
 import type { UserRole } from "@/lib/types";
 
+// Akun & PIN demo hanya untuk dev. Build produksi tidak menampilkan, mengisi,
+// maupun menerima kredensial demo (sama dengan DEMO_USERS_ENABLED di mockData;
+// ditulis literal agar blok demo terbuang dari bundle).
+const SHOW_DEMO_ACCOUNTS = process.env.NODE_ENV !== "production";
+
+/** Pesan gagal login backend saat tidak ada fallback akun lokal (produksi). */
+function serverLoginError(res: ApiResult<unknown>, mode: "pin" | "password"): string {
+  if (!res.status) {
+    return "Server SIPANDAI tidak dapat dihubungi. Periksa jaringan, lalu coba lagi.";
+  }
+  if (res.status === 401) {
+    return mode === "pin" ? "PIN tidak valid." : "Email atau password salah.";
+  }
+  return res.error ?? "Login gagal.";
+}
+
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@airport.test");
-  const [password, setPassword] = useState("password");
+  const [email, setEmail] = useState(SHOW_DEMO_ACCOUNTS ? "admin@airport.test" : "");
+  const [password, setPassword] = useState(SHOW_DEMO_ACCOUNTS ? "password" : "");
   const [pin, setPin] = useState("");
   const [authMode, setAuthMode] = useState<"pin" | "password">("pin");
   const [showPw, setShowPw] = useState(false);
@@ -61,7 +77,7 @@ export default function LoginPage() {
 
     // Admin/Supervisor: coba backend dulu (biar dapat token server + role
     // backend untuk menu admin seperti Kelola Petugas), fallback ke akun lokal
-    // kalau backend mati/akun cuma ada lokal (mis. akun demo).
+    // kalau backend mati/akun cuma ada lokal (akun demo, dev saja).
     if (authMode === "password") {
       try {
         const api = await apiLogin(email.trim(), password);
@@ -79,6 +95,11 @@ export default function LoginPage() {
           router.replace(role === "security" ? "/scan/kiosk" : "/dashboard");
           return;
         }
+        if (!SHOW_DEMO_ACCOUNTS) {
+          setLoading(false);
+          setError(serverLoginError(api, "password"));
+          return;
+        }
       } catch {
         /* backend offline → fallback lokal di bawah */
       }
@@ -94,7 +115,7 @@ export default function LoginPage() {
     }
 
     // PIN petugas: coba backend dulu (auto-connect + aktifkan sync), lalu
-    // fallback ke PIN lokal kalau backend mati/offline.
+    // fallback ke PIN lokal kalau backend mati/offline (akun demo, dev saja).
     try {
       const api = await apiLoginPin(pin);
       if (api.ok && api.data) {
@@ -109,6 +130,12 @@ export default function LoginPage() {
         saveSettings({ apiSyncEnabled: true }); // scan langsung ter-push ke station petugas
         setLoading(false);
         router.replace(role === "security" ? "/scan/kiosk" : "/dashboard");
+        return;
+      }
+
+      if (!SHOW_DEMO_ACCOUNTS) {
+        setLoading(false);
+        setError(serverLoginError(api, "pin"));
         return;
       }
 
@@ -513,7 +540,7 @@ export default function LoginPage() {
               </form>
               )}
 
-              {authMode === "pin" ? (
+              {!SHOW_DEMO_ACCOUNTS ? null : authMode === "pin" ? (
                 <div className="mt-5 rounded-2xl border border-white/15 bg-white/[0.05] p-3 backdrop-blur">
                   <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-200">
                     <Sparkles className="h-3 w-3" />
