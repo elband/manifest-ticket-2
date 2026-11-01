@@ -51,11 +51,13 @@ export default function ConnectPage() {
   const [syncOn, setSyncOn] = useState(false);
   const [summary, setSummary] = useState<ApiOutboxSummary>({
     pending: 0,
+    syncing: 0,
     failed: 0,
     total: 0,
     lastSyncedAt: null,
     lastError: null,
     online: true,
+    needsLogin: false,
   });
 
   // Login form

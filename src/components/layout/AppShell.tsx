@@ -38,6 +38,11 @@ import { sweepPastDayFlights } from "@/lib/flightSweeper";
 import { logout } from "@/lib/auth";
 import { cn, todayDateString } from "@/lib/utils";
 import { getSettings } from "@/lib/settings";
+import {
+  getApiOutboxSummary,
+  subscribeApiOutbox,
+  type ApiOutboxSummary,
+} from "@/lib/api/outbox";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import { useT, useLocale } from "@/lib/useT";
 import { BottomNav } from "./BottomNav";
@@ -178,7 +183,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [ready, setReady] = useState(false);
-  const [online, setOnline] = useState(true);
+  const [sync, setSync] = useState<ApiOutboxSummary | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -223,18 +228,15 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
   // P-15: jam dipindah ke komponen <LiveClock/> sendiri agar update tiap detik
   // tidak me-render ulang seluruh shell.
 
+  // Online = jaringan hidup DAN server SIPANDAI terjangkau (dari outbox, yang
+  // juga melacak berapa scan belum terkirim).
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    setOnline(navigator.onLine);
-    const up = () => setOnline(true);
-    const down = () => setOnline(false);
-    window.addEventListener("online", up);
-    window.addEventListener("offline", down);
-    return () => {
-      window.removeEventListener("online", up);
-      window.removeEventListener("offline", down);
-    };
+    const refresh = () => setSync(getApiOutboxSummary());
+    refresh();
+    return subscribeApiOutbox(refresh);
   }, []);
+  const online = sync?.online ?? true;
+  const waiting = sync?.pending ?? 0;
 
   // Auto-sync FIDS → data flight tiap 3 menit (silent, fire-and-forget).
   // Saklar di Pengaturan (fidsAutoSync); dicek tiap tick agar bisa di-on/off
@@ -550,7 +552,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                     ? "bg-emerald-50/80 text-emerald-700 ring-emerald-200"
                     : "bg-rose-50/80 text-rose-700 ring-rose-200",
                 )}
-                title={online ? "Online" : "Offline"}
+                title={
+                  online
+                    ? "Online"
+                    : "Server tidak terjangkau. Data tersimpan di perangkat dan dikirim otomatis saat koneksi pulih."
+                }
               >
                 {online ? (
                   <Wifi className="h-3 w-3" />
@@ -558,6 +564,7 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
                   <WifiOff className="h-3 w-3" />
                 )}
                 {online ? "Online" : "Offline"}
+                {waiting > 0 && ` · ${waiting} menunggu`}
               </div>
 
               {/* Live clock + date — P-15: komponen sendiri (re-render terisolasi). */}

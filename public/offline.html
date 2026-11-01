@@ -47,6 +47,19 @@
         lokal — coba muat ulang setelah koneksi kembali.
       </p>
       <button onclick="location.reload()">Muat ulang</button>
+      <p id="auto" style="margin: 14px 0 0; font-size: 12px"></p>
     </main>
+    <script>
+      // Coba muat ulang otomatis (mis. kiosk menyala sebelum jaringan siap).
+      (function () {
+        var left = 15;
+        var el = document.getElementById("auto");
+        (function tick() {
+          el.textContent = "Mencoba lagi otomatis dalam " + left + " detik…";
+          if (left-- <= 0) location.reload();
+          else setTimeout(tick, 1000);
+        })();
+      })();
+    </script>
   </body>
 </html>

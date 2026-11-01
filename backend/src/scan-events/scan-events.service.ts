@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
 import { ListScansQuery, PushScanDto } from "./dto";
@@ -54,28 +55,42 @@ export class ScanEventsService {
     }
 
     const scannedAt = new Date(dto.scannedAt);
-    const created = await this.prisma.scanEvent.create({
-      data: {
-        eventId: dto.eventId,
-        rawBarcode: dto.rawBarcode,
-        flightNumber: dto.flightNumber ?? null,
-        pnr: dto.pnr ?? null,
-        ticketNumber: dto.ticketNumber ?? null,
-        seat: dto.seat ?? null,
-        passengerName: dto.passengerName ?? null,
-        resultStatus: dto.resultStatus,
-        message: dto.message ?? null,
-        scannedAt,
-        station: dto.station,
-        facePhotoPath,
-        ktpStatus: dto.ktpStatus ?? null,
-        ktpName: dto.ktpName ?? null,
-        ktpSimilarity: dto.ktpSimilarity ?? null,
-        ktpCapturedAt: dto.ktpCapturedAt ? new Date(dto.ktpCapturedAt) : null,
-        flightId,
-        operatorId,
-      },
-    });
+    let created;
+    try {
+      created = await this.prisma.scanEvent.create({
+        data: {
+          eventId: dto.eventId,
+          rawBarcode: dto.rawBarcode,
+          flightNumber: dto.flightNumber ?? null,
+          pnr: dto.pnr ?? null,
+          ticketNumber: dto.ticketNumber ?? null,
+          seat: dto.seat ?? null,
+          passengerName: dto.passengerName ?? null,
+          resultStatus: dto.resultStatus,
+          message: dto.message ?? null,
+          scannedAt,
+          station: dto.station,
+          facePhotoPath,
+          ktpStatus: dto.ktpStatus ?? null,
+          ktpName: dto.ktpName ?? null,
+          ktpSimilarity: dto.ktpSimilarity ?? null,
+          ktpCapturedAt: dto.ktpCapturedAt ? new Date(dto.ktpCapturedAt) : null,
+          flightId,
+          operatorId,
+        },
+      });
+    } catch (e) {
+      // Dua kiriman eventId yang sama berbarengan (mis. outbox dikirim ulang
+      // setelah koneksi pulih): yang kalah balapan → kembalikan baris pemenang,
+      // bukan 500.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const winner = await this.prisma.scanEvent.findUnique({
+          where: { eventId: dto.eventId },
+        });
+        if (winner) return winner;
+      }
+      throw e;
+    }
 
     // Manifest penumpang: hanya scan VALID_FLIGHT & flight yang ter-resolve.
     // Idempoten — eventId duplikat sudah di-skip di atas, jadi tak double-count.

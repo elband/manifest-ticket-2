@@ -64,6 +64,7 @@ import {
 } from "@/lib/seedBoardingPasses";
 import { useToast } from "@/components/ui/Toast";
 import {
+  archiveOldScanEvents,
   getSession,
   getScanEvents,
   getFlights,
@@ -84,6 +85,13 @@ import {
   subscribeOutbox,
   type OutboxSummary,
 } from "@/lib/sikerenOutbox";
+import {
+  flushApiOutbox,
+  getApiOutboxSummary,
+  subscribeApiOutbox,
+  type ApiOutboxSummary,
+} from "@/lib/api/outbox";
+import { logout } from "@/lib/auth";
 import {
   getSettings,
   saveSettings,
@@ -437,6 +445,10 @@ export default function KioskPage() {
   const isDark = settings.theme === "dark";
 
   React.useEffect(() => {
+    // Kiosk tidak memakai AppShell → arsip harian dijalankan di sini juga,
+    // supaya localStorage tidak penuh setelah berhari-hari (maks. 1x/hari;
+    // antrean kirim ke server tidak tersentuh).
+    archiveOldScanEvents(1);
     const s = getSession();
     setSession(s);
     if (!s) {
@@ -1190,6 +1202,15 @@ export default function KioskPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {settings.apiSyncEnabled && (
+            <ServerSyncChip
+              onRelogin={() => {
+                // Antrean tetap tersimpan: logout hanya menghapus sesi lokal.
+                logout();
+                router.replace("/login");
+              }}
+            />
+          )}
           {settings.sikerenEnabled && (
             <SikerenSyncChip
               summary={outbox}
@@ -2100,11 +2121,40 @@ function FlightBoardingCard({
  * public/sw.js), minta SW cek versi baru, lalu muat ulang halaman. Data
  * localStorage (sesi, pengaturan, riwayat scan) tidak disentuh.
  */
+/** Server halaman terjangkau? (permintaan kecil, lewati cache & SW). */
+async function serverReachable(timeoutMs = 4000): Promise<boolean> {
+  if (navigator.onLine === false) return false;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`/offline.html?probe=${Date.now()}`, {
+      cache: "no-store",
+      signal: ctrl.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function HardRefreshButton() {
+  const toast = useToast();
   const [busy, setBusy] = React.useState(false);
   const run = async () => {
     if (busy) return;
     setBusy(true);
+    // Hard refresh menghapus cache halaman offline. Saat server tak terjangkau
+    // itu justru membuat kiosk tidak bisa dibuka lagi → batalkan.
+    if (!(await serverReachable())) {
+      setBusy(false);
+      toast.warning(
+        "Server tidak terjangkau. Hard Refresh dibatalkan supaya kiosk tetap bisa dipakai offline; scan tetap tersimpan.",
+        "Sedang offline",
+      );
+      return;
+    }
     try {
       if ("caches" in window) {
         const keys = await caches.keys();
@@ -2526,6 +2576,94 @@ function SikerenSyncChip({
   );
 }
 
+
+/**
+ * Status kiriman scan ke server SIPANDAI (outbox backend). Scan selalu
+ * tersimpan lokal dulu; chip ini memberi tahu petugas berapa yang belum
+ * terkirim saat jaringan/server terganggu, dan kapan perlu login ulang.
+ */
+function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
+  const [summary, setSummary] = React.useState<ApiOutboxSummary | null>(null);
+  React.useEffect(() => {
+    const refresh = () => setSummary(getApiOutboxSummary());
+    refresh();
+    return subscribeApiOutbox(refresh);
+  }, []);
+  if (!summary) return null;
+
+  let tone: "ok" | "pending" | "failed" | "offline" | "syncing" | "login" = "ok";
+  if (summary.needsLogin) tone = "login";
+  else if (summary.syncing > 0) tone = "syncing";
+  else if (!summary.online) tone = "offline";
+  else if (summary.failed > 0) tone = "failed";
+  else if (summary.pending > 0) tone = "pending";
+
+  const toneClass: Record<typeof tone, string> = {
+    ok: "bg-emerald-100 text-emerald-700 ring-emerald-300 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30",
+    pending:
+      "bg-sky-100 text-sky-700 ring-sky-300 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30",
+    failed:
+      "bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
+    login:
+      "bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
+    offline:
+      "bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
+    syncing:
+      "bg-cyan-100 text-cyan-700 ring-cyan-300 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-500/30",
+  };
+
+  const waiting = summary.pending > 0 ? ` · ${summary.pending} menunggu` : "";
+  const label =
+    tone === "login"
+      ? `Login ulang${waiting}`
+      : tone === "syncing"
+        ? `Mengirim ${summary.pending}…`
+        : tone === "offline"
+          ? `Server offline${waiting}`
+          : tone === "failed"
+            ? `Gagal kirim ${summary.failed}`
+            : tone === "pending"
+              ? `Menunggu ${summary.pending}`
+              : "Server tersinkron";
+
+  const icon =
+    tone === "syncing" ? (
+      <Loader2 className="h-3 w-3 animate-spin" />
+    ) : tone === "offline" ? (
+      <CloudOff className="h-3 w-3" />
+    ) : (
+      <Cloud className="h-3 w-3" />
+    );
+
+  const lastSync = summary.lastSyncedAt
+    ? new Date(summary.lastSyncedAt).toLocaleTimeString("id-ID")
+    : "belum pernah";
+  const hint =
+    tone === "login"
+      ? "Sesi server habis. Klik untuk login ulang; data yang menunggu tetap tersimpan dan terkirim setelah login."
+      : tone === "offline"
+        ? "Server tidak terjangkau. Scan tetap tersimpan di perangkat dan dikirim otomatis saat koneksi pulih."
+        : "Klik untuk kirim sekarang.";
+
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        tone === "login" ? onRelogin() : void flushApiOutbox({ maxItems: 100 })
+      }
+      title={`${label} · terakhir terkirim: ${lastSync}${
+        summary.lastError && tone !== "ok" ? ` · ${summary.lastError}` : ""
+      }\n${hint}`}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ring-1 transition hover:brightness-110",
+        toneClass[tone],
+      )}
+    >
+      {icon}
+      <span className="tabular-nums">{label}</span>
+    </button>
+  );
+}
 
 function ActionRow({
   onReset,

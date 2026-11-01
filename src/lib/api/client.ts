@@ -152,17 +152,32 @@ function httpError(status: number, body: unknown): string {
   return `HTTP ${status}`;
 }
 
-/** Fetch dengan auto Bearer token + auto-logout pada 401. */
+/**
+ * Fetch dengan auto Bearer token + auto-logout pada 401. `timeoutMs` → request
+ * dibatalkan (AbortError) bila backend tidak merespons, supaya pemanggil
+ * (mis. outbox) tidak menggantung selamanya.
+ */
 export async function authedFetch(
   path: string,
   init?: RequestInit,
+  timeoutMs?: number,
 ): Promise<Response> {
   const token = getToken();
   const headers = new Headers(init?.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
-  if (res.status === 401) clearAuth();
-  return res;
+  const ctrl = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(`${getApiBase()}${path}`, {
+      ...init,
+      headers,
+      signal: ctrl?.signal ?? init?.signal,
+    });
+    if (res.status === 401) clearAuth();
+    return res;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // ─────────────────────────── Endpoints ───────────────────────────
@@ -328,6 +343,9 @@ export async function apiSyncFlights(
   }
 }
 
+/** Batas tunggu push satu scan (termasuk foto wajah ≤1 MB). */
+const PUSH_TIMEOUT_MS = 20_000;
+
 /** Push satu scan event (multipart, idempotent by eventId). */
 export async function apiPushScan(
   fields: ScanPushFields,
@@ -353,7 +371,11 @@ export async function apiPushScan(
     if (fields.ktpCapturedAt) fd.set("ktpCapturedAt", fields.ktpCapturedAt);
     if (faceBlob) fd.set("facePhoto", faceBlob, `${fields.eventId}.jpg`);
 
-    const res = await authedFetch("/scan-events", { method: "POST", body: fd });
+    const res = await authedFetch(
+      "/scan-events",
+      { method: "POST", body: fd },
+      PUSH_TIMEOUT_MS,
+    );
     const body = await readJson(res);
     if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
     return { ok: true, status: res.status, data: body };
@@ -730,16 +752,22 @@ export async function getFacePhotoObjectUrl(
   }
 }
 
-/** Cek backend hidup (login probe ringan tidak perlu; pakai /docs-less ping). */
-export async function apiHealth(): Promise<ApiResult<true>> {
+/** Cek backend hidup lewat GET /health (publik, tanpa throttle). */
+export async function apiHealth(timeoutMs = 5_000): Promise<ApiResult<true>> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    // Endpoint apa pun yang publik; /auth/login OPTIONS atau GET flights 401.
-    const res = await fetch(`${getApiBase()}/auth/login`, {
-      method: "OPTIONS",
+    // GET polos = CORS "simple request" (tanpa preflight). Metode OPTIONS
+    // lintas-origin selalu ditolak preflight, jadi tidak bisa dipakai di sini.
+    const res = await fetch(`${getApiBase()}/health`, {
+      cache: "no-store",
+      signal: ctrl.signal,
     });
     // Server hidup kalau merespons apa pun (termasuk 404/405).
     return { ok: true, status: res.status, data: true };
   } catch (e) {
     return { ok: false, error: errMsg(e) };
+  } finally {
+    clearTimeout(timer);
   }
 }

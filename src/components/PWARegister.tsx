@@ -11,6 +11,9 @@ export function PWARegister() {
     const onLoad = () => {
       navigator.serviceWorker
         .register("/sw.js", { scope: "/" })
+        // Siapkan halaman inti untuk dibuka offline (SW membatasi frekuensinya).
+        .then(() => navigator.serviceWorker.ready)
+        .then((reg) => reg.active?.postMessage({ type: "warm-pages" }))
         .catch(() => {
           /* swallow — offline shell is best-effort */
         });

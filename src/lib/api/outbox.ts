@@ -11,18 +11,21 @@ import { getSettings } from "../settings";
 import type { ScanEvent } from "../types";
 import {
   ScanPushFields,
+  apiHealth,
   apiPushScan,
   getApiUser,
   getToken,
 } from "./client";
 
-interface ApiOutboxItem {
+export interface ApiOutboxItem {
   id: string; // = eventId
   fields: ScanPushFields;
   faceCaptureId: string | null;
   attempts: number;
   lastAttemptAt: string | null;
   lastError: string | null;
+  /** HTTP status percobaan terakhir; null = gagal jaringan/timeout. */
+  lastStatus?: number | null;
   enqueuedAt: string;
   status: "pending" | "syncing" | "failed";
 }
@@ -30,15 +33,60 @@ interface ApiOutboxItem {
 interface ApiOutboxMeta {
   lastSyncedAt: string | null;
   lastError: string | null;
+  /**
+   * Backend terjangkau pada percobaan terakhir? null = belum pernah dicoba.
+   * Lebih jujur dari navigator.onLine, yang tetap true saat LAN hidup tapi
+   * server mati.
+   */
+  reachable?: boolean | null;
 }
 
 export interface ApiOutboxSummary {
   pending: number;
+  /** Item yang sedang dikirim saat ini. */
+  syncing: number;
   failed: number;
   total: number;
   lastSyncedAt: string | null;
   lastError: string | null;
+  /** Jaringan hidup DAN backend tidak sedang tak terjangkau. */
   online: boolean;
+  /** Ada data menunggu tapi token backend hilang/kedaluwarsa → perlu login. */
+  needsLogin: boolean;
+}
+
+/** Jatah percobaan untuk kegagalan "permanent" sebelum item ditandai failed. */
+const MAX_ATTEMPTS = 5;
+
+export type PushErrorKind = "transient" | "auth" | "permanent";
+
+/**
+ * Golongkan kegagalan push dari HTTP status-nya. Hanya "permanent" (data
+ * ditolak backend, mis. validasi 400) yang menghabiskan jatah percobaan.
+ * Jaringan putus, timeout, throttle & server error ("transient") serta token
+ * habis ("auth") bukan salah datanya → item tetap menunggu sampai pulih.
+ */
+export function classifyPushError(status: number | null | undefined): PushErrorKind {
+  if (!status) return "transient";
+  if (status === 401) return "auth";
+  if (status === 408 || status === 429 || status >= 500) return "transient";
+  return "permanent";
+}
+
+/**
+ * Pulihkan antrean saat aplikasi mulai:
+ *  - `syncing` → `pending` (aplikasi tertutup di tengah pengiriman);
+ *  - `failed` yang bukan karena data ditolak (versi lama menandai gangguan
+ *    jaringan sebagai failed, tanpa lastStatus) → `pending` dengan jatah baru.
+ */
+export function recoverOutboxItems(items: ApiOutboxItem[]): ApiOutboxItem[] {
+  return items.map((q) => {
+    if (q.status === "syncing") return { ...q, status: "pending" };
+    if (q.status === "failed" && classifyPushError(q.lastStatus) !== "permanent") {
+      return { ...q, status: "pending", attempts: 0 };
+    }
+    return q;
+  });
 }
 
 const QUEUE_KEY = "afvs.api.outbox";
@@ -64,15 +112,15 @@ function writeQueue(items: ApiOutboxItem[]) {
   notify();
 }
 
+const EMPTY_META: ApiOutboxMeta = { lastSyncedAt: null, lastError: null, reachable: null };
+
 function readMeta(): ApiOutboxMeta {
-  if (!isBrowser()) return { lastSyncedAt: null, lastError: null };
+  if (!isBrowser()) return EMPTY_META;
   try {
     const raw = window.localStorage.getItem(META_KEY);
-    return raw
-      ? (JSON.parse(raw) as ApiOutboxMeta)
-      : { lastSyncedAt: null, lastError: null };
+    return raw ? (JSON.parse(raw) as ApiOutboxMeta) : EMPTY_META;
   } catch {
-    return { lastSyncedAt: null, lastError: null };
+    return EMPTY_META;
   }
 }
 
@@ -90,15 +138,21 @@ function notify() {
 export function getApiOutboxSummary(): ApiOutboxSummary {
   const queue = readQueue();
   const meta = readMeta();
-  const online = !isBrowser() ? true : navigator.onLine !== false;
+  const online =
+    (!isBrowser() || navigator.onLine !== false) && meta.reachable !== false;
+  const pending = queue.filter(
+    (q) => q.status === "pending" || q.status === "syncing",
+  ).length;
   return {
-    pending: queue.filter((q) => q.status === "pending" || q.status === "syncing")
-      .length,
+    pending,
+    syncing: queue.filter((q) => q.status === "syncing").length,
     failed: queue.filter((q) => q.status === "failed").length,
     total: queue.length,
     lastSyncedAt: meta.lastSyncedAt,
     lastError: meta.lastError,
     online,
+    needsLogin:
+      isBrowser() && getSettings().apiSyncEnabled && !getToken() && pending > 0,
   };
 }
 
@@ -192,7 +246,7 @@ export function retryAllApiFailed(): void {
 
 export function clearApiOutbox(): void {
   writeQueue([]);
-  writeMeta({ lastSyncedAt: null, lastError: null });
+  writeMeta(EMPTY_META);
 }
 
 let flushing = false;
@@ -230,12 +284,17 @@ export async function flushApiOutbox(opts?: {
       queue = readQueue();
       if (result.ok) {
         writeQueue(queue.filter((q) => q.id !== item.id));
-        writeMeta({ lastSyncedAt: new Date().toISOString(), lastError: null });
+        writeMeta({
+          lastSyncedAt: new Date().toISOString(),
+          lastError: null,
+          reachable: true,
+        });
         sent += 1;
       } else {
-        const attempts = item.attempts + 1;
+        const kind = classifyPushError(result.status);
+        const attempts = kind === "permanent" ? item.attempts + 1 : item.attempts;
         const nextStatus: ApiOutboxItem["status"] =
-          attempts >= 5 ? "failed" : "pending";
+          attempts >= MAX_ATTEMPTS ? "failed" : "pending";
         writeQueue(
           queue.map((q) =>
             q.id === item.id
@@ -244,6 +303,7 @@ export async function flushApiOutbox(opts?: {
                   attempts,
                   lastAttemptAt: new Date().toISOString(),
                   lastError: result.error ?? "Unknown error",
+                  lastStatus: result.status ?? null,
                   status: nextStatus,
                 }
               : q,
@@ -252,19 +312,13 @@ export async function flushApiOutbox(opts?: {
         writeMeta({
           lastSyncedAt: readMeta().lastSyncedAt,
           lastError: result.error ?? "Unknown error",
+          reachable: kind !== "transient",
         });
         if (nextStatus === "failed") failed += 1;
         else skipped += 1;
-        // Stop kalau error network — biar tidak banjir.
-        const err = (result.error ?? "").toLowerCase();
-        if (
-          err.includes("terhubung") ||
-          err.includes("timeout") ||
-          err.includes("offline") ||
-          result.status === 401
-        ) {
-          break;
-        }
+        // Jaringan/server terganggu atau token habis: hentikan batch, coba
+        // lagi di tick berikutnya (atau setelah login ulang).
+        if (kind !== "permanent") break;
       }
     }
   } finally {
@@ -273,14 +327,29 @@ export async function flushApiOutbox(opts?: {
   return { sent, failed, skipped };
 }
 
+/** Perbarui status `reachable` dengan ping ringan ke backend. */
+async function probeBackend(): Promise<void> {
+  if (!getSettings().apiSyncEnabled) return;
+  const reachable = navigator.onLine !== false && (await apiHealth()).ok;
+  const meta = readMeta();
+  if (meta.reachable !== reachable) writeMeta({ ...meta, reachable });
+}
+
 let autoFlushStarted = false;
 export function startApiAutoFlush(): () => void {
   if (!isBrowser()) return () => {};
   if (autoFlushStarted) return () => {};
   autoFlushStarted = true;
 
+  const queue = readQueue();
+  const recovered = recoverOutboxItems(queue);
+  if (recovered.some((q, i) => q !== queue[i])) writeQueue(recovered);
+
   const kick = () => {
-    flushApiOutbox().catch(() => {});
+    const hasPending = readQueue().some((q) => q.status === "pending");
+    // Antrean kosong → tetap cek backend supaya indikator online/offline
+    // akurat (flush hanya memperbarui status saat ada yang dikirim).
+    (hasPending ? flushApiOutbox() : probeBackend()).catch(() => {});
   };
   kick();
   const interval = window.setInterval(kick, 20_000);
