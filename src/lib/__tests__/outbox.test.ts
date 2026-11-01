@@ -32,6 +32,8 @@ function installFakeWindow() {
     addEventListener: () => {},
     removeEventListener: () => {},
   });
+  // Node < 21 (mis. CI Node 20) tidak punya global `navigator`.
+  vi.stubGlobal("navigator", { onLine: true });
   // Aktifkan sinkron backend (setting dibaca dari localStorage).
   localStorage.setItem("afvs.settings", JSON.stringify({ apiSyncEnabled: true }));
   return store;
