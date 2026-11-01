@@ -26,6 +26,8 @@ if (location.protocol === "file:") {
     cancel: () => ipcRenderer.invoke("setup:cancel"),
     setShortcut: (kind, enabled) => ipcRenderer.invoke("setup:shortcut", kind, enabled),
     quit: () => ipcRenderer.invoke("setup:quit"),
+    checkUpdate: () => ipcRenderer.invoke("setup:update-check"),
+    installUpdate: () => ipcRenderer.invoke("setup:update-install"),
   });
 }
 

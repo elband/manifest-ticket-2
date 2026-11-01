@@ -46,4 +46,50 @@ for (const [id, kind] of [
   });
 }
 
+function updateText(u) {
+  const time = (iso) =>
+    iso ? new Date(iso).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
+  switch (u.status) {
+    case "unsupported":
+      return "Pembaruan otomatis hanya aktif di aplikasi yang terpasang di Lubuntu.";
+    case "idle":
+      return `Versi ${u.currentVersion}. Pembaruan akan dicek otomatis.`;
+    case "checking":
+      return "Memeriksa pembaruan…";
+    case "latest":
+      return `Versi ${u.currentVersion} sudah yang terbaru (dicek ${time(u.checkedAt)}).`;
+    case "downloading":
+      return `Mengunduh versi ${u.version}… ${u.percent ?? 0}%`;
+    case "ready":
+      return `Versi ${u.version} siap dipasang (sekarang ${u.currentVersion}).`;
+    case "installing":
+      return "Memasang pembaruan… masukkan password admin bila diminta.";
+    case "error":
+      return `Versi ${u.currentVersion}. Pemeriksaan pembaruan gagal.`;
+    default:
+      return "";
+  }
+}
+
+async function refreshUpdate() {
+  const { update: u } = await desktop.getSetup();
+  $("update-status").textContent = updateText(u);
+  $("update-error").textContent = u.error ?? "";
+  $("update-install").hidden = u.status !== "ready";
+  $("update-note").hidden = u.status !== "ready";
+  $("update-check").hidden = !["idle", "latest", "error"].includes(u.status);
+}
+
+$("update-check").addEventListener("click", async () => {
+  await desktop.checkUpdate();
+  refreshUpdate();
+});
+$("update-install").addEventListener("click", async () => {
+  await desktop.installUpdate();
+  refreshUpdate();
+});
+
 init();
+refreshUpdate();
+// Status unduhan berubah di latar belakang → segarkan berkala.
+setInterval(refreshUpdate, 1500);

@@ -48,8 +48,28 @@ unduh file di komputer lain, lalu salin lewat flashdisk atau taruh di server
 internal. `SHA256SUMS.txt` di halaman release dipakai untuk memastikan file
 tidak rusak: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 
-Untuk memperbarui aplikasi, unduh `.deb` versi baru dan jalankan `apt install`
-yang sama. Perubahan web SIPANDAI tidak butuh update aplikasi.
+Perubahan web SIPANDAI tidak butuh update aplikasi; cukup deploy server.
+
+### Pembaruan aplikasi
+
+Mulai versi **0.1.2**, aplikasi memperbarui dirinya sendiri dari GitHub
+Releases (perangkat perlu akses internet ke github.com):
+
+- Aplikasi mengecek versi baru saat dibuka lalu tiap 4 jam, dan mengunduhnya
+  di latar belakang.
+- **Dashboard:** muncul dialog *"SIPANDAI x.y.z siap dipasang"*. Klik **Pasang &
+  Buka Ulang**, masukkan **password admin Lubuntu**, lalu aplikasi terbuka lagi
+  dengan versi baru. Bisa juga lewat menu **Aplikasi → Periksa Pembaruan…**.
+- **Kiosk:** dialog hanya muncul sesaat setelah aplikasi dibuka (awal shift),
+  supaya tidak mengganggu antrean scan. Di luar itu, admin menekan
+  **Ctrl+Shift+S** → bagian *Versi & pembaruan* → **Pasang & Buka Ulang**.
+- Password dibutuhkan karena paket `.deb` dipasang sebagai root. Bila dialog
+  dibatalkan, aplikasi tetap berjalan dan pembaruan bisa dipasang nanti. Data
+  scan di perangkat tidak terpengaruh.
+
+Perangkat yang masih memakai **0.1.0 / 0.1.1** perlu memasang **0.1.2** sekali
+secara manual (`wget` + `apt install` di atas). Setelah itu pembaruan berikutnya
+lewat aplikasi.
 
 Saat pertama kali dibuka, isi alamat server **lengkap dengan `http://` atau
 `https://`**, persis seperti di browser, misalnya `http://192.168.50.156`.
@@ -141,6 +161,10 @@ npx electron . --server=http://localhost:3000   # ke dev server lokal
 Ikon `build/icon.png` dibuat dari `public/icons/icon.svg` dengan `npm run icon`.
 
 ## Membuat paket .deb / AppImage
+
+Rilis juga memuat `latest-linux.yml`, yang dibaca fitur pembaruan otomatis untuk
+mengetahui versi terbaru beserta checksum paketnya. Jangan hapus file ini dari
+halaman rilis.
 
 Paket dibangun otomatis oleh GitHub Actions
 ([.github/workflows/desktop.yml](../.github/workflows/desktop.yml)) di mesin

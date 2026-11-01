@@ -44,6 +44,16 @@ jobs:
       - name: Build
         run: npx electron-builder --linux deb AppImage --x64 --publish never
 
+      # Pembaruan otomatis (desktop/updater.js) butuh latest-linux.yml di rilis
+      # dan app-update.yml + electron-updater di dalam paket.
+      - name: Periksa metadata pembaruan
+        run: |
+          cat dist/latest-linux.yml
+          grep -q -- '-amd64.deb' dist/latest-linux.yml
+          dpkg-deb -c dist/sipandai-desktop-*-amd64.deb | grep -q 'resources/app-update.yml'
+          dpkg-deb -c dist/sipandai-desktop-*-amd64.deb | grep -q 'resources/package-type'
+          node -e "const l=require('@electron/asar').listPackage('dist/linux-unpacked/resources/app.asar'); if(!l.some(f=>f.includes('electron-updater'))) { console.error('electron-updater tidak ada di app.asar'); process.exit(1) }"
+
       - name: Nama file tetap & checksum
         working-directory: desktop/dist
         run: |
@@ -56,8 +66,9 @@ jobs:
         with:
           name: sipandai-desktop
           path: |
-            desktop/dist/*.deb
-            desktop/dist/*.AppImage
+            desktop/dist/sipandai-desktop-*-amd64.deb
+            desktop/dist/sipandai-desktop-*-x86_64.AppImage
+            desktop/dist/latest-linux.yml
             desktop/dist/SHA256SUMS.txt
           retention-days: 30
 
@@ -69,5 +80,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "SIPANDAI Desktop ${GITHUB_REF_NAME#desktop-v}" \
-            --notes "Pasang di Lubuntu (64-bit): \`sudo apt install ./sipandai-desktop-amd64.deb\`. Panduan lengkap: desktop/README.md." \
-            *.deb *.AppImage SHA256SUMS.txt
+            --notes "Pasang di Lubuntu (64-bit): \`sudo apt install ./sipandai-desktop-amd64.deb\`. Mulai versi 0.1.2 aplikasi memperbarui dirinya sendiri (Aplikasi → Periksa Pembaruan). Panduan lengkap: desktop/README.md." \
+            *.deb *.AppImage latest-linux.yml SHA256SUMS.txt

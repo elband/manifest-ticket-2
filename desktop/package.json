@@ -31,8 +31,17 @@
       "preload.js",
       "config.js",
       "shortcuts.js",
+      "updater.js",
       "pages/**",
       "build/icon.png"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "elband",
+        "repo": "manifest-ticket-2",
+        "releaseType": "release"
+      }
     ],
     "linux": {
       "target": [
@@ -49,5 +58,8 @@
   "devDependencies": {
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

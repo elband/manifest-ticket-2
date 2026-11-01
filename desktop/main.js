@@ -16,13 +16,14 @@
  * proses ini, menggantikan kiosk-agent/ yang dibutuhkan bila memakai browser.
  */
 
-const { app, BrowserWindow, Menu, ipcMain, session, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, session, shell } = require("electron");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const config = require("./config");
 const shortcuts = require("./shortcuts");
+const updater = require("./updater");
 
 const IS_KIOSK = process.argv.includes("--kiosk");
 const CLI_SERVER = config.normalizeServerUrl(
@@ -232,6 +233,7 @@ handleLocal("setup:get", () => ({
       ? lastCertError
       : null,
   shortcuts: { supported: shortcuts.supported(), ...shortcuts.status() },
+  update: updater.getState(),
 }));
 
 handleLocal("setup:save", (input) => {
@@ -274,6 +276,8 @@ handleLocal("setup:retry", () => {
 handleLocal("setup:open", () => showPage("setup.html"));
 handleLocal("setup:cancel", () => loadApp());
 handleLocal("setup:quit", () => app.quit());
+handleLocal("setup:update-check", () => updater.check());
+handleLocal("setup:update-install", () => updater.install());
 handleLocal("setup:shortcut", (kind, enabled) =>
   shortcuts.set(kind, Boolean(enabled), iconForShortcut()),
 );
@@ -334,6 +338,13 @@ function buildMenu() {
       submenu: [
         { label: "Beranda", accelerator: "Alt+Home", click: () => loadApp() },
         { label: "Pengaturan Server…", click: () => showPage("setup.html") },
+        {
+          label: "Periksa Pembaruan…",
+          click: () => {
+            updater.check();
+            showPage("setup.html");
+          },
+        },
         { type: "separator" },
         { role: "quit", label: "Keluar" },
       ],
@@ -462,6 +473,30 @@ function createWindow() {
   loadApp();
 }
 
+// ─────────── Pembaruan aplikasi ───────────
+
+/**
+ * Tawarkan pemasangan pembaruan yang sudah diunduh. Dashboard selalu ditanya;
+ * kiosk hanya sesaat setelah aplikasi dibuka (awal shift), supaya dialog
+ * password tidak muncul di tengah antrean scan. Di luar itu admin memasang
+ * dari halaman pengaturan (Ctrl+Shift+S).
+ */
+async function offerUpdate(version) {
+  if (!mainWindow) return;
+  if (IS_KIOSK && process.uptime() > 180) return;
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: "info",
+    title: "Pembaruan SIPANDAI",
+    message: `SIPANDAI ${version} siap dipasang.`,
+    detail:
+      "Aplikasi akan ditutup sebentar dan meminta password admin Lubuntu untuk memasang pembaruan, lalu dibuka kembali. Data scan di perangkat tetap aman.",
+    buttons: ["Pasang & Buka Ulang", "Nanti"],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) updater.install();
+}
+
 // ─────────── Siklus hidup ───────────
 
 if (!app.requestSingleInstanceLock()) {
@@ -477,6 +512,7 @@ if (!app.requestSingleInstanceLock()) {
     hardenSession();
     buildMenu();
     createWindow();
+    updater.start({ onReady: offerUpdate });
   });
 
   app.on("window-all-closed", () => app.quit());
