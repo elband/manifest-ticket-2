@@ -51,7 +51,9 @@ tidak rusak: `sha256sum -c SHA256SUMS.txt --ignore-missing`.
 Untuk memperbarui aplikasi, unduh `.deb` versi baru dan jalankan `apt install`
 yang sama. Perubahan web SIPANDAI tidak butuh update aplikasi.
 
-Saat pertama kali dibuka, isi alamat server, misalnya `https://192.168.50.156`.
+Saat pertama kali dibuka, isi alamat server **lengkap dengan `http://` atau
+`https://`**, persis seperti di browser, misalnya `http://192.168.50.156`.
+Alamat tanpa awalan dianggap `https://`.
 Di halaman yang sama ada dua centang untuk perangkat kiosk:
 
 - **Tambahkan SIPANDAI Kiosk ke menu aplikasi**
@@ -61,9 +63,26 @@ Pintasan ini dibuat untuk user yang sedang login (`~/.local/share/applications`
 dan `~/.config/autostart`). Di mode kiosk, halaman pengaturan dibuka dengan
 **Ctrl+Shift+S**.
 
+### Server HTTP
+
+Chromium menganggap alamat HTTP (selain localhost) **tidak aman** dan
+memblokir kamera, service worker (mode offline), dan clipboard. Di browser
+biasa, fitur kamera SIPANDAI tidak berjalan lewat HTTP.
+
+Aplikasi desktop memperlakukan **hanya alamat server SIPANDAI** sebagai aman
+(switch Chromium `unsafely-treat-insecure-origin-as-secure`), jadi kamera dan
+mode offline tetap berjalan. Saat alamat server diganti ke HTTP, aplikasi
+otomatis dibuka ulang agar pengaturan ini berlaku.
+
+> **Risiko:** lalu lintas HTTP tidak terenkripsi. Orang di jaringan yang sama
+> bisa menyadap PIN/password, atau menyisipkan skrip yang ikut mendapat akses
+> kamera. Gunakan hanya di jaringan internal yang dipercaya. Solusi permanen:
+> pasang HTTPS di server (Nginx + sertifikat internal), lalu ganti alamat di
+> aplikasi ke `https://` dan ikuti bagian berikut.
+
 ### Sertifikat HTTPS internal
 
-Server memakai sertifikat CA sendiri, jadi koneksi pertama akan ditolak dan
+Bila server memakai sertifikat CA sendiri, koneksi pertama akan ditolak dan
 aplikasi menampilkan **sidik jari SHA-256** sertifikat server. Cocokkan dengan
 sidik jari yang dicek di server:
 

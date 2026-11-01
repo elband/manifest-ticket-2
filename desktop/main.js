@@ -53,6 +53,16 @@ let lastCertError = null;
 
 app.userAgentFallback = `${app.userAgentFallback} SIPANDAI-Desktop/${app.getVersion()}`;
 
+// Server lewat HTTP (selain localhost) bukan "secure context": Chromium
+// memblokir kamera, service worker & clipboard. Atas keputusan pemilik sistem,
+// HANYA origin server SIPANDAI diperlakukan aman. Risikonya: lalu lintas HTTP
+// tidak terenkripsi, jadi solusi permanen tetap HTTPS di server. Switch harus
+// dipasang sebelum app siap → ganti ke server HTTP lain butuh restart.
+const BOOT_ORIGIN = serverOrigin();
+if (BOOT_ORIGIN.startsWith("http://")) {
+  app.commandLine.appendSwitch("unsafely-treat-insecure-origin-as-secure", BOOT_ORIGIN);
+}
+
 // ─────────── Util ───────────
 
 function serverOrigin() {
@@ -234,6 +244,12 @@ handleLocal("setup:save", (input) => {
   }
   config.save({ serverUrl: origin });
   cfg = config.load();
+  if (origin.startsWith("http://") && origin !== BOOT_ORIGIN) {
+    // Origin HTTP baru baru dianggap aman setelah aplikasi dibuka ulang.
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
+  }
   loadApp();
   return { ok: true };
 });

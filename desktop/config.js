@@ -12,7 +12,7 @@
  *
  * Contoh /etc/sipandai-desktop.json:
  *   {
- *     "serverUrl": "https://192.168.50.156",
+ *     "serverUrl": "http://192.168.50.156",
  *     "trustedCertFingerprint": "AB:CD:...:EF"   // SHA-256, opsional
  *   }
  */
