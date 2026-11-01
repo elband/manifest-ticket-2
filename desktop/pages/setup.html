@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+  <title>Pengaturan — SIPANDAI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <img src="../build/icon.png" alt="">
+      <div>
+        <h1>SIPANDAI Desktop</h1>
+        <p id="version"></p>
+      </div>
+    </div>
+
+    <form id="server-form">
+      <label for="server">Alamat server SIPANDAI</label>
+      <input id="server" type="text" placeholder="https://192.168.50.156" autocomplete="off" spellcheck="false">
+      <p class="hint" id="server-hint">Alamat yang biasa dibuka di browser, tanpa garis miring di akhir.</p>
+      <p class="error" id="server-error"></p>
+      <div class="actions">
+        <button type="submit" class="primary" id="save">Simpan &amp; Hubungkan</button>
+        <button type="button" id="cancel" hidden>Batal</button>
+      </div>
+    </form>
+
+    <section id="shortcuts" hidden>
+      <h2>Mode kiosk</h2>
+      <label class="check">
+        <input type="checkbox" id="sc-launcher">
+        <span>Tambahkan <b>SIPANDAI Kiosk</b> ke menu aplikasi</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="sc-autostart">
+        <span>Buka mode kiosk otomatis saat login</span>
+      </label>
+      <p class="hint">Pintasan dibuat untuk user Lubuntu yang sedang login. Di mode kiosk, tekan <b>Ctrl+Shift+S</b> untuk membuka halaman ini.</p>
+    </section>
+  </main>
+  <script src="setup.js"></script>
+</body>
+</html>

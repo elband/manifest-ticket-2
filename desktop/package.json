@@ -1,0 +1,52 @@
+{
+  "name": "sipandai-desktop",
+  "productName": "SIPANDAI",
+  "version": "0.1.0",
+  "description": "Aplikasi desktop SIPANDAI (dashboard admin & mode kiosk) untuk Lubuntu",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": {
+    "name": "Tim SIPANDAI",
+    "email": "admin@afvs.local"
+  },
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:kiosk": "electron . --kiosk",
+    "icon": "electron scripts/make-icon.js",
+    "dist": "electron-builder --linux deb AppImage --x64",
+    "dist:deb": "electron-builder --linux deb --x64",
+    "dist:appimage": "electron-builder --linux AppImage --x64"
+  },
+  "build": {
+    "appId": "id.sipandai.desktop",
+    "productName": "SIPANDAI",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "config.js",
+      "shortcuts.js",
+      "pages/**",
+      "build/icon.png"
+    ],
+    "linux": {
+      "target": [
+        "deb",
+        "AppImage"
+      ],
+      "category": "Office",
+      "executableName": "sipandai-desktop",
+      "icon": "build/icon.png",
+      "synopsis": "Validasi boarding pass SIPANDAI",
+      "artifactName": "${name}-${version}-${arch}.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  }
+}

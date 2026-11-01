@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+  <title>Tidak terhubung — SIPANDAI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <img src="../build/icon.png" alt="">
+      <div>
+        <h1 id="title">Server tidak dapat dihubungi</h1>
+        <p id="server" class="mono"></p>
+      </div>
+    </div>
+
+    <p id="message">Periksa koneksi Wi-Fi/LAN perangkat ini, lalu coba lagi.</p>
+    <p class="hint">Kode: <span id="code" class="mono"></span></p>
+
+    <div id="cert" class="warn" hidden>
+      <p><b>Sertifikat server belum dipercaya.</b> Bandingkan sidik jari SHA-256 di bawah dengan milik server (tanyakan admin). Klik <b>Percayai</b> hanya bila keduanya sama persis.</p>
+      <p class="mono" id="fingerprint"></p>
+      <p class="muted">Penerbit: <span id="issuer"></span></p>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="retry">Coba Lagi</button>
+      <button id="trust" hidden>Percayai Sertifikat</button>
+      <button id="setup">Ganti Alamat Server</button>
+      <button id="quit">Keluar</button>
+    </div>
+    <p class="hint" id="auto"></p>
+  </main>
+  <script src="error.js"></script>
+</body>
+</html>
