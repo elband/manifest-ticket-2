@@ -640,6 +640,18 @@ export const SEED_BOARDING_PASSES: SeedBoardingPass[] = [
   },
 ];
 
+/**
+ * Tombol Demo Scan di kiosk aktif? NEXT_PUBLIC_ENABLE_DEMO_SCAN="true"/"false"
+ * memaksa nyala/mati; bila tidak diset: nyala di dev, MATI di build produksi.
+ * (Diakses literal agar Next meng-inline nilainya di bundle klien.)
+ */
+export function demoScanEnabled(): boolean {
+  const flag = process.env.NEXT_PUBLIC_ENABLE_DEMO_SCAN;
+  if (flag === "true") return true;
+  if (flag === "false") return false;
+  return process.env.NODE_ENV !== "production";
+}
+
 /** Tanggal efektif boarding pass: pakai departureDate bila ada, else dari dateRef. */
 function resolveBpDate(bp: SeedBoardingPass): string {
   if (bp.departureDate) return bp.departureDate;

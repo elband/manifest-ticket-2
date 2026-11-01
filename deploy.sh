@@ -141,6 +141,8 @@ if (( DO_FRONTEND )); then
   [[ "$API_BASE" == https://* ]] || warn "NEXT_PUBLIC_AFVS_API_BASE bukan HTTPS (F-09)"
   [[ "$(env_get "$FE_ENV" NEXT_PUBLIC_ENABLE_TEST_FLIGHTS)" != "true" ]] \
     || warn "NEXT_PUBLIC_ENABLE_TEST_FLIGHTS=true — penerbangan uji AKTIF di build produksi"
+  [[ "$(env_get "$FE_ENV" NEXT_PUBLIC_ENABLE_DEMO_SCAN)" != "true" ]] \
+    || warn "NEXT_PUBLIC_ENABLE_DEMO_SCAN=true — tombol Demo Scan kiosk AKTIF di build produksi"
   ok "env frontend: $(basename "$FE_ENV") → $API_BASE"
 fi
 

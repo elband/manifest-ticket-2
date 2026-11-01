@@ -8,3 +8,6 @@ out
 certificates
 # Aset Tesseract (disalin dari node_modules oleh scripts/copy-tesseract-assets.mjs)
 public/tesseract
+
+# Cache Python (kiosk-agent)
+__pycache__/

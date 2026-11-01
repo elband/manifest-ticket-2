@@ -19,6 +19,8 @@ import {
   Moon,
   ArrowRight,
   Scan,
+  Smartphone,
+  Ticket,
   Volume2,
   VolumeX,
   RotateCcw,
@@ -31,21 +33,19 @@ import {
   IdCard,
   UserX,
   Power,
+  AppWindow,
+  RefreshCw,
+  Minimize2,
   Maximize,
   Minimize,
-  Ticket,
-  Scissors,
-  Droplets,
-  Flame,
-  SprayCan,
-  Hammer,
-  ShieldAlert,
-  BatteryCharging,
-  Luggage,
   BarChart3,
 } from "lucide-react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCountUp } from "@/lib/useCountUp";
+import {
+  getKioskAgentActions,
+  runKioskAgentAction,
+  type KioskAgentAction,
+} from "@/lib/kioskAgent";
 import Image from "next/image";
 import { cn, todayDateString } from "@/lib/utils";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
@@ -59,6 +59,7 @@ import { AirlineLogo } from "@/components/ui/AirlineLogo";
 import {
   SEED_BOARDING_PASSES,
   buildPayload,
+  demoScanEnabled,
   ensureDemoBoardingFlight,
 } from "@/lib/seedBoardingPasses";
 import { useToast } from "@/components/ui/Toast";
@@ -287,6 +288,45 @@ function faceGateMessage(state: FaceState): { title: string; body: string } {
   }
 }
 
+type PowerAction = "close" | "minimize" | "shutdown";
+
+const POWER_CONFIRM: Record<
+  PowerAction,
+  {
+    title: string;
+    body: string;
+    confirm: string;
+    icon: React.ElementType;
+    tone: ModalToneName;
+    button: string;
+  }
+> = {
+  close: {
+    title: "Tutup browser?",
+    body: "Layar kiosk akan ditutup dan scanner tidak menerima boarding pass sampai browser dibuka kembali.",
+    confirm: "Tutup Browser",
+    icon: AppWindow,
+    tone: "danger",
+    button: "bg-rose-600 hover:bg-rose-700",
+  },
+  minimize: {
+    title: "Perkecil browser?",
+    body: "Selama browser diperkecil, scan boarding pass TIDAK tercatat. Buka kembali lewat taskbar Lubuntu atau Alt+Tab.",
+    confirm: "Perkecil",
+    icon: Minimize2,
+    tone: "warning",
+    button: "bg-amber-500 hover:bg-amber-600",
+  },
+  shutdown: {
+    title: "Matikan perangkat?",
+    body: "Perangkat kiosk akan dimatikan. Scanner tidak bisa dipakai sampai perangkat dinyalakan kembali.",
+    confirm: "Matikan",
+    icon: Power,
+    tone: "danger",
+    button: "bg-rose-600 hover:bg-rose-700",
+  },
+};
+
 export default function KioskPage() {
   const router = useRouter();
   const toast = useToast();
@@ -336,7 +376,25 @@ export default function KioskPage() {
   const [pendingKtp, setPendingKtp] = React.useState<PendingKtp | null>(null);
   const pendingKtpRef = React.useRef<PendingKtp | null>(null);
   const [ktpDecision, setKtpDecision] = React.useState<KtpDecision | null>(null);
-  const [closeConfirm, setCloseConfirm] = React.useState(false);
+  // Konfirmasi aksi perangkat: tutup / perkecil browser, matikan perangkat.
+  const [powerConfirm, setPowerConfirm] = React.useState<PowerAction | null>(null);
+  const [powerBusy, setPowerBusy] = React.useState(false);
+  // Agen lokal Lubuntu (kiosk-agent/) — aksi yang didukungnya di perangkat
+  // ini. Tanpa agen: kosong → "Matikan" & "Perkecil" disembunyikan.
+  const [agentActions, setAgentActions] = React.useState<KioskAgentAction[]>([]);
+  React.useEffect(() => {
+    let alive = true;
+    const probe = () =>
+      getKioskAgentActions().then((actions) => {
+        if (alive) setAgentActions(actions);
+      });
+    probe();
+    const t = setInterval(probe, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
   React.useEffect(() => {
     pendingKtpRef.current = pendingKtp;
   }, [pendingKtp]);
@@ -940,11 +998,19 @@ export default function KioskPage() {
   };
 
   const exitKiosk = () => router.push("/scan");
-  // Browser hanya mengizinkan window.close() bila jendela dibuka oleh skrip
-  // atau riwayatnya cuma 1 halaman; selain itu ditolak diam-diam → cek lalu
-  // beri petunjuk tutup manual.
-  const closeBrowser = () => {
-    setCloseConfirm(false);
+  const cancelPower = () => {
+    setPowerConfirm(null);
+    inputRef.current?.focus();
+  };
+  // Tutup browser: utamakan agen lokal (selalu berhasil). Tanpa agen, pakai
+  // window.close() — browser hanya mengizinkannya bila riwayat tab cuma 1
+  // halaman; selain itu ditolak diam-diam → beri petunjuk tutup manual.
+  const closeBrowser = async () => {
+    setPowerBusy(true);
+    const viaAgent = await runKioskAgentAction("close-browser");
+    setPowerBusy(false);
+    setPowerConfirm(null);
+    if (viaAgent) return;
     window.close();
     setTimeout(() => {
       if (!window.closed) {
@@ -956,6 +1022,41 @@ export default function KioskPage() {
       }
     }, 300);
   };
+  const shutdownDevice = async () => {
+    setPowerBusy(true);
+    const ok = await runKioskAgentAction("shutdown");
+    setPowerBusy(false);
+    setPowerConfirm(null);
+    if (ok) {
+      toast.info("Perangkat sedang dimatikan…", "Shutdown");
+    } else {
+      setAgentActions([]);
+      toast.error(
+        "Agen kiosk tidak merespons. Matikan perangkat secara manual.",
+        "Gagal shutdown",
+      );
+      inputRef.current?.focus();
+    }
+  };
+  const minimizeBrowser = async () => {
+    setPowerBusy(true);
+    const ok = await runKioskAgentAction("minimize-browser");
+    setPowerBusy(false);
+    setPowerConfirm(null);
+    if (!ok) {
+      toast.error(
+        "Browser tidak bisa diperkecil. Pastikan sesi Lubuntu memakai X11 dan xdotool terpasang.",
+        "Gagal perkecil",
+      );
+      inputRef.current?.focus();
+    }
+  };
+  const runPowerAction = (action: PowerAction) =>
+    action === "shutdown"
+      ? shutdownDevice()
+      : action === "minimize"
+        ? minimizeBrowser()
+        : closeBrowser();
   const toggleTheme = () => setTheme(isDark ? "airport" : "dark");
   const toggleSound = () => saveSettings({ soundOn: !settings.soundOn });
 
@@ -999,7 +1100,7 @@ export default function KioskPage() {
   };
 
   const handleDemoScan = async () => {
-    if (demoLoading || submittingRef.current) return;
+    if (!demoScanEnabled() || demoLoading || submittingRef.current) return;
     setDemoLoading(true);
     try {
       // Kalau scan demo barusan VALID → klik berikutnya MENGULANG pass yang sama
@@ -1096,6 +1197,7 @@ export default function KioskPage() {
               onClick={onForceSync}
             />
           )}
+          <HardRefreshButton />
           <ScannerStatusBadge mode={inputMode} />
           <ClockChip now={now} />
           <KioskMenu
@@ -1104,7 +1206,17 @@ export default function KioskPage() {
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
             onExit={exitKiosk}
-            onCloseBrowser={() => setCloseConfirm(true)}
+            onCloseBrowser={() => setPowerConfirm("close")}
+            onShutdown={
+              agentActions.includes("shutdown")
+                ? () => setPowerConfirm("shutdown")
+                : undefined
+            }
+            onMinimizeBrowser={
+              agentActions.includes("minimize-browser")
+                ? () => setPowerConfirm("minimize")
+                : undefined
+            }
           />
         </div>
       </header>
@@ -1122,8 +1234,8 @@ export default function KioskPage() {
       />
 
       {/* Main grid */}
-      <main className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 pb-6 pt-2 lg:overflow-visible lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
-        {/* Kiri (penumpang): status scan + panduan bergilir */}
+      <main className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 pb-6 pt-2 lg:overflow-visible lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
+        {/* Kiri (penumpang): status scan */}
         <section className="flex flex-col gap-4 lg:min-h-0">
           <ScanReadyCard
             ktpFirst={settings.ktpScanFirst}
@@ -1131,13 +1243,12 @@ export default function KioskPage() {
           />
           <ActionRow
             onReset={handleReset}
-            onDemo={handleDemoScan}
+            onDemo={demoScanEnabled() ? handleDemoScan : undefined}
             demoLoading={demoLoading}
             showExempt={settings.ktpScanFirst && settings.allowNoKtpExemption}
             exemptActive={exemptNext}
             onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
           />
-          <PassengerGuideCarousel paused={modalOpen} />
         </section>
 
         {/* Kanan (petugas AVSEC): statistik shift + flight aktif */}
@@ -1266,43 +1377,50 @@ export default function KioskPage() {
         )}
       </Modal>
 
-      <Modal
-        open={closeConfirm}
-        onClose={() => {
-          setCloseConfirm(false);
-          inputRef.current?.focus();
-        }}
-        tone="danger"
-        size="sm"
-        title="Tutup browser?"
-        icon={<Power className="h-5 w-5" />}
-      >
-        <div className="space-y-4 p-1">
-          <p className="text-[13px] leading-snug text-slate-600 dark:text-ink-muted">
-            Layar kiosk akan ditutup dan scanner tidak menerima boarding pass
-            sampai browser dibuka kembali.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setCloseConfirm(false);
-                inputRef.current?.focus();
-              }}
-              className="rounded-2xl bg-slate-100 px-3 py-2.5 text-[13px] font-bold text-slate-700 hover:bg-slate-200 dark:bg-white/10 dark:text-white/80 dark:hover:bg-white/15"
-            >
-              Batal
-            </button>
-            <button
-              type="button"
-              onClick={closeBrowser}
-              className="rounded-2xl bg-rose-600 px-3 py-2.5 text-[13px] font-bold text-white hover:bg-rose-700"
-            >
-              Tutup Browser
-            </button>
-          </div>
-        </div>
-      </Modal>
+      {(() => {
+        const cfg = powerConfirm ? POWER_CONFIRM[powerConfirm] : POWER_CONFIRM.close;
+        const Icon = cfg.icon;
+        return (
+          <Modal
+            open={powerConfirm !== null}
+            onClose={() => {
+              if (!powerBusy) cancelPower();
+            }}
+            tone={cfg.tone}
+            size="sm"
+            title={cfg.title}
+            icon={<Icon className="h-5 w-5" />}
+          >
+            <div className="space-y-4 p-1">
+              <p className="text-[13px] leading-snug text-slate-600 dark:text-ink-muted">
+                {cfg.body}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={cancelPower}
+                  disabled={powerBusy}
+                  className="rounded-2xl bg-slate-100 px-3 py-2.5 text-[13px] font-bold text-slate-700 hover:bg-slate-200 disabled:opacity-50 dark:bg-white/10 dark:text-white/80 dark:hover:bg-white/15"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => powerConfirm && void runPowerAction(powerConfirm)}
+                  disabled={powerBusy}
+                  className={cn(
+                    "inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-[13px] font-bold text-white disabled:opacity-70",
+                    cfg.button,
+                  )}
+                >
+                  {powerBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {cfg.confirm}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       <KtpVerifyModal
         open={ktpFlow !== null}
@@ -1392,256 +1510,6 @@ const TICKER_ITEMS = [
   "Pastikan nama di boarding pass sesuai dengan identitas penumpang",
   "Ikuti arahan petugas AVSEC di setiap titik pemeriksaan keamanan",
 ];
-
-/* ─────────────── Panduan penumpang (carousel) ─────────────── */
-
-type GuideTone = "cyan" | "rose" | "amber";
-
-interface GuideSlide {
-  id: string;
-  eyebrow: string;
-  title: string;
-  tone: GuideTone;
-  /** steps = langkah bernomor; grid = ikon kecil 3 kolom; info = 2 kartu besar */
-  kind: "steps" | "grid" | "info";
-  items: { icon: React.ElementType; label: string; sub: string }[];
-}
-
-const GUIDE_SLIDES: GuideSlide[] = [
-  {
-    id: "cara-scan",
-    eyebrow: "Cara Validasi",
-    title: "3 langkah mudah di pos ini",
-    tone: "cyan",
-    kind: "steps",
-    items: [
-      { icon: Ticket, label: "Siapkan boarding pass", sub: "Cetak atau tampilkan di ponsel" },
-      { icon: ScanLine, label: "Arahkan barcode ke scanner", sub: "Tahan tenang ±10 cm di depan scanner" },
-      { icon: CheckCircle2, label: "Lihat hasil di layar", sub: "Hijau = silakan lanjut ke ruang tunggu" },
-    ],
-  },
-  {
-    id: "terlarang",
-    eyebrow: "Barang Terlarang di Kabin",
-    title: "Jangan dibawa ke kabin pesawat",
-    tone: "rose",
-    kind: "grid",
-    items: [
-      { icon: Scissors, label: "Benda tajam", sub: "Pisau, gunting, cutter" },
-      { icon: Droplets, label: "Cairan > 100 ml", sub: "Per wadah" },
-      { icon: Flame, label: "Mudah terbakar", sub: "Bensin, spiritus, kembang api" },
-      { icon: SprayCan, label: "Aerosol", sub: "Semprotan bertekanan" },
-      { icon: Hammer, label: "Perkakas", sub: "Palu, obeng, kunci" },
-      { icon: ShieldAlert, label: "Senjata & replika", sub: "Termasuk mainan mirip senjata" },
-    ],
-  },
-  {
-    id: "powerbank",
-    eyebrow: "Baterai & Powerbank",
-    title: "Powerbank wajib dibawa di kabin",
-    tone: "amber",
-    kind: "info",
-    items: [
-      {
-        icon: BatteryCharging,
-        label: "Bawa di kabin",
-        sub: "Powerbank & baterai lithium cadangan tidak boleh masuk bagasi.",
-      },
-      {
-        icon: Luggage,
-        label: "Batas kapasitas",
-        sub: "Maks. 160 Wh. Di atas 100 Wh perlu persetujuan maskapai.",
-      },
-    ],
-  },
-  {
-    id: "dokumen",
-    eyebrow: "Dokumen Perjalanan",
-    title: "Siapkan sebelum antre",
-    tone: "cyan",
-    kind: "info",
-    items: [
-      {
-        icon: Ticket,
-        label: "Boarding pass",
-        sub: "Barcode, nama, dan nomor penerbangan harus terbaca jelas.",
-      },
-      {
-        icon: IdCard,
-        label: "Identitas asli",
-        sub: "KTP / Paspor / SIM dengan nama sesuai boarding pass.",
-      },
-    ],
-  },
-];
-
-const GUIDE_INTERVAL_MS = 8000;
-
-const GUIDE_TONE: Record<GuideTone, { eyebrow: string; chip: string }> = {
-  cyan: {
-    eyebrow: "text-cyan-700 dark:text-cyan-300",
-    chip: "bg-cyan-500/10 text-cyan-600 ring-cyan-500/25 dark:bg-cyan-400/15 dark:text-cyan-300 dark:ring-cyan-400/30",
-  },
-  rose: {
-    eyebrow: "text-rose-600 dark:text-rose-300",
-    chip: "bg-rose-500/10 text-rose-600 ring-rose-500/25 dark:bg-rose-400/15 dark:text-rose-300 dark:ring-rose-400/30",
-  },
-  amber: {
-    eyebrow: "text-amber-700 dark:text-amber-300",
-    chip: "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:bg-amber-400/15 dark:text-amber-300 dark:ring-amber-400/30",
-  },
-};
-
-/**
- * Panduan untuk penumpang yang antre: cara scan, barang terlarang, powerbank,
- * dokumen. Bergilir otomatis; berhenti saat modal hasil scan terbuka supaya
- * tidak ada gerakan di belakang hasil. Reduced-motion → hanya fade.
- */
-function PassengerGuideCarousel({ paused }: { paused: boolean }) {
-  const [idx, setIdx] = React.useState(0);
-  const reduce = useReducedMotion();
-
-  React.useEffect(() => {
-    if (paused) return;
-    const t = setTimeout(
-      () => setIdx((i) => (i + 1) % GUIDE_SLIDES.length),
-      GUIDE_INTERVAL_MS,
-    );
-    return () => clearTimeout(t);
-  }, [idx, paused]);
-
-  const slide = GUIDE_SLIDES[idx];
-  const tone = GUIDE_TONE[slide.tone];
-
-  return (
-    <div className="relative flex min-h-[260px] flex-1 flex-col overflow-hidden rounded-3xl bg-white/80 px-6 py-5 [@media(max-height:860px)]:py-4 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/50">
-          Panduan Penumpang
-        </span>
-        <div className="flex items-center gap-1.5" role="tablist" aria-label="Pilih panduan">
-          {GUIDE_SLIDES.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={i === idx}
-              aria-label={s.eyebrow}
-              onClick={() => setIdx(i)}
-              className="flex h-6 items-center px-0.5"
-            >
-              <span
-                className={cn(
-                  "block h-1.5 rounded-full transition-all",
-                  i === idx
-                    ? "w-6 bg-cyan-500 dark:bg-cyan-400"
-                    : "w-1.5 bg-slate-300 hover:bg-slate-400 dark:bg-white/20 dark:hover:bg-white/35",
-                )}
-              />
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={slide.id}
-          initial={reduce ? { opacity: 0 } : { opacity: 0, x: 28 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -28 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="mt-3 flex min-h-0 flex-1 flex-col"
-        >
-          <p className={cn("text-[11px] font-black uppercase tracking-[0.16em]", tone.eyebrow)}>
-            {slide.eyebrow}
-          </p>
-          <h2 className="mt-0.5 text-2xl font-black tracking-tight text-slate-800 [@media(max-height:860px)]:text-xl dark:text-white">
-            {slide.title}
-          </h2>
-
-          {slide.kind === "steps" && (
-            <ol className="mt-4 grid flex-1 gap-3 [@media(max-height:860px)]:mt-3 sm:grid-cols-3">
-              {slide.items.map((it, i) => {
-                const Icon = it.icon;
-                return (
-                  <li
-                    key={it.label}
-                    className="relative flex flex-col items-center justify-center gap-2 rounded-2xl bg-slate-50 px-3 py-4 [@media(max-height:860px)]:py-2.5 text-center ring-1 ring-slate-200/80 dark:bg-white/5 dark:ring-white/10"
-                  >
-                    <span className="absolute left-3 top-2.5 text-[11px] font-black text-slate-400 dark:text-white/35">
-                      {i + 1}
-                    </span>
-                    <span className={cn("flex h-14 w-14 items-center justify-center rounded-2xl ring-1", tone.chip)}>
-                      <Icon className="h-7 w-7" />
-                    </span>
-                    <span className="text-[15px] font-bold leading-tight text-slate-800 dark:text-white">
-                      {it.label}
-                    </span>
-                    <span className="text-[12px] leading-snug text-slate-500 dark:text-white/55">
-                      {it.sub}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-
-          {slide.kind === "grid" && (
-            <ul className="mt-4 grid flex-1 grid-cols-2 gap-3 [@media(max-height:860px)]:mt-3 [@media(max-height:860px)]:gap-2 sm:grid-cols-3">
-              {slide.items.map((it) => {
-                const Icon = it.icon;
-                return (
-                  <li
-                    key={it.label}
-                    className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 [@media(max-height:860px)]:py-2 ring-1 ring-slate-200/80 dark:bg-white/5 dark:ring-white/10"
-                  >
-                    <span className={cn("relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1", tone.chip)}>
-                      <Icon className="h-5 w-5" />
-                      {/* garis coret "dilarang" */}
-                      <span aria-hidden className="absolute h-0.5 w-9 rotate-45 rounded-full bg-rose-500/80" />
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[14px] font-bold leading-tight text-slate-800 dark:text-white">
-                        {it.label}
-                      </span>
-                      <span className="block text-[11.5px] leading-snug text-slate-500 dark:text-white/55">
-                        {it.sub}
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {slide.kind === "info" && (
-            <ul className="mt-4 grid flex-1 gap-3 [@media(max-height:860px)]:mt-3 sm:grid-cols-2">
-              {slide.items.map((it) => {
-                const Icon = it.icon;
-                return (
-                  <li
-                    key={it.label}
-                    className="flex flex-col justify-center gap-3 [@media(max-height:860px)]:gap-2 rounded-2xl bg-slate-50 px-5 py-4 [@media(max-height:860px)]:py-3 ring-1 ring-slate-200/80 dark:bg-white/5 dark:ring-white/10"
-                  >
-                    <span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl ring-1", tone.chip)}>
-                      <Icon className="h-6 w-6" />
-                    </span>
-                    <span className="text-[17px] font-black leading-tight text-slate-800 dark:text-white">
-                      {it.label}
-                    </span>
-                    <span className="text-[13px] leading-snug text-slate-500 dark:text-white/60">
-                      {it.sub}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
 
 /* ─────────────── Statistik shift (untuk petugas AVSEC) ─────────────── */
 
@@ -1877,11 +1745,11 @@ function ScanReadyCard({
   const waitingKtp = ktpFirst && !pendingName;
 
   const icon = identityReady ? (
-    <CheckCircle2 className="h-7 w-7" />
+    <CheckCircle2 className="h-11 w-11" />
   ) : waitingKtp ? (
-    <IdCard className="h-7 w-7" />
+    <IdCard className="h-11 w-11" />
   ) : (
-    <Scan className="h-7 w-7" />
+    <Scan className="h-11 w-11" />
   );
   const chip = identityReady
     ? "from-emerald-400 to-teal-600 shadow-emerald-500/40"
@@ -1898,52 +1766,89 @@ function ScanReadyCard({
       : "Arahkan scanner USB ke boarding pass untuk memulai validasi.";
 
   return (
-    <div className="relative shrink-0 overflow-hidden rounded-3xl bg-white/80 px-6 py-5 [@media(max-height:860px)]:py-4 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+    <div className="relative flex min-h-[260px] flex-1 flex-col justify-center overflow-hidden rounded-3xl bg-white/80 px-6 py-7 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
       <div
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-cyan-50/40 via-transparent to-blue-50/40 dark:from-cyan-500/5 dark:to-blue-500/5"
       />
-      <div className="relative flex flex-col items-center gap-4 [@media(max-height:860px)]:gap-3">
-        {/* layar pendek: gelombang disembunyikan agar panduan kebagian ruang */}
-        <div className="[@media(max-height:860px)]:hidden">
-          <Waveform />
-        </div>
-        <span
-          className={cn(
-            "relative flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-xl",
-            chip,
-          )}
-        >
-          {icon}
+      {/* Cincin konsentris samar di belakang ikon */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        {[560, 420, 290].map((d) => (
+          <span
+            key={d}
+            className="absolute rounded-full border border-cyan-400/15 dark:border-cyan-300/10"
+            style={{ width: d, height: d }}
+          />
+        ))}
+      </div>
+
+      <div className="relative flex flex-col items-center gap-6">
+        <Waveform />
+
+        {/* Ikon + bingkai bidik + cincin putus-putus berputar */}
+        <div className="relative flex h-44 w-44 items-center justify-center">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400/40 animate-spin-slow dark:border-cyan-300/30"
+          />
           <span
             aria-hidden
             className={cn(
-              "absolute inset-0 rounded-2xl animate-ping",
-              identityReady ? "bg-emerald-300/40" : "bg-cyan-300/40",
+              "absolute inset-5 rounded-full animate-ripple",
+              identityReady ? "bg-emerald-300/30" : "bg-cyan-300/30",
             )}
           />
-        </span>
+          <span aria-hidden className="absolute inset-7">
+            <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg border-l-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg border-r-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg border-b-[3px] border-l-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute bottom-0 right-0 h-5 w-5 rounded-br-lg border-b-[3px] border-r-[3px] border-cyan-500 dark:border-cyan-300" />
+          </span>
+          <span
+            className={cn(
+              "relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br text-white shadow-2xl ring-4 ring-white/70 dark:ring-white/10",
+              chip,
+            )}
+          >
+            {icon}
+          </span>
+        </div>
+
         <div className="text-center">
           {identityReady && (
-            <p className="mb-0.5 text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
+            <p className="mb-1 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
               Identitas KTP
             </p>
           )}
-          <p className="text-xl font-black tracking-tight">{title}</p>
-          <p className="mt-1.5 max-w-sm text-[12px] leading-snug text-slate-500 dark:text-white/55">
+          <p className="text-3xl font-black tracking-tight 2xl:text-4xl">{title}</p>
+          <p className="mx-auto mt-2 max-w-md text-[14px] leading-snug text-slate-500 dark:text-white/55">
             {subtitle}
           </p>
         </div>
+
+        {/* Sumber boarding pass yang bisa dipindai */}
+        {!waitingKtp && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-[12px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
+              <Smartphone className="h-3.5 w-3.5" />
+              Layar HP
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-[12px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
+              <Ticket className="h-3.5 w-3.5" />
+              Kertas boarding pass
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function Waveform() {
-  // 32 batang vertikal, tinggi deterministik, animasi via delay CSS
+  // 48 batang vertikal, tinggi deterministik, animasi via delay CSS
   const bars = React.useMemo(
     () =>
-      Array.from({ length: 32 }, (_, i) => {
+      Array.from({ length: 48 }, (_, i) => {
         const seed = Math.sin(i * 1.7) * 0.5 + 0.5;
         const h = 30 + Math.round(seed * 70);
         const delay = (i % 10) * 80;
@@ -1952,7 +1857,7 @@ function Waveform() {
     [],
   );
   return (
-    <div className="flex h-16 items-center gap-1.5">
+    <div className="flex h-20 items-center gap-1.5">
       {bars.map((b, i) => (
         <span
           key={i}
@@ -2190,6 +2095,53 @@ function FlightBoardingCard({
 
 /* ─────────────── Header chips ─────────────── */
 
+/**
+ * Hard refresh: buang Cache Storage service worker (aset cache-first di
+ * public/sw.js), minta SW cek versi baru, lalu muat ulang halaman. Data
+ * localStorage (sesi, pengaturan, riwayat scan) tidak disentuh.
+ */
+function HardRefreshButton() {
+  const [busy, setBusy] = React.useState(false);
+  const run = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => {})));
+      }
+    } catch {
+      // Tetap reload walau pembersihan cache gagal.
+    }
+    window.location.reload();
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => void run()}
+      disabled={busy}
+      title="Hard refresh — bersihkan cache & muat ulang halaman"
+      className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 text-left shadow-sm backdrop-blur transition hover:bg-white disabled:opacity-70 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-md">
+        <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
+      </span>
+      <span className="leading-none">
+        <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/50">
+          Browser
+        </span>
+        <span className="mt-1 block text-[13px] font-extrabold text-slate-700 dark:text-white/85">
+          {busy ? "Memuat ulang…" : "Hard Refresh"}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function ScannerStatusBadge({ mode }: { mode: "idle" | "scanner" | "manual" }) {
   const cfg = {
     scanner: {
@@ -2295,6 +2247,8 @@ function KioskMenu({
   onToggleTheme,
   onExit,
   onCloseBrowser,
+  onShutdown,
+  onMinimizeBrowser,
 }: {
   isDark: boolean;
   soundOn: boolean;
@@ -2302,24 +2256,67 @@ function KioskMenu({
   onToggleTheme: () => void;
   onExit: () => void;
   onCloseBrowser: () => void;
+  /** Hanya ada bila agen kiosk lokal terdeteksi. */
+  onShutdown?: () => void;
+  /** Hanya ada bila agen mendukung minimize (xdotool + X11). */
+  onMinimizeBrowser?: () => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   // Ikuti status fullscreen dari browser (juga saat user keluar via Esc/F11).
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  // Jendela sudah layar penuh di level browser (Chromium --kiosk / F11 /
+  // --start-fullscreen) → fullscreen halaman tak mengubah apa pun & --kiosk
+  // tak bisa keluar dari halaman → tombol disembunyikan.
+  const [browserFullscreen, setBrowserFullscreen] = React.useState(false);
   React.useEffect(() => {
-    const sync = () => setIsFullscreen(!!document.fullscreenElement);
+    const sync = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      setBrowserFullscreen(
+        !document.fullscreenElement &&
+          window.innerWidth >= screen.width &&
+          window.innerHeight >= screen.height,
+      );
+    };
     sync();
     document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
+    window.addEventListener("resize", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      window.removeEventListener("resize", sync);
+    };
   }, []);
+  const toast = useToast();
   const toggleFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {});
+      return;
+    }
+    if (!document.fullscreenEnabled) {
+      toast.warning(
+        "Browser tidak mengizinkan halaman masuk layar penuh. Tekan F11.",
+        "Layar penuh diblokir",
+      );
+      return;
+    }
+    // Sebagian browser menolak tanpa error / tak pernah menyelesaikan promise
+    // → cek hasilnya setelah jeda singkat.
+    const check = setTimeout(() => {
+      if (!document.fullscreenElement) {
+        toast.warning(
+          "Browser tidak merespons permintaan layar penuh. Tekan F11.",
+          "Layar penuh gagal",
+        );
+      }
+    }, 1500);
     try {
-      if (document.fullscreenElement) await document.exitFullscreen();
-      else await document.documentElement.requestFullscreen();
-    } catch {
-      // Ditolak browser (mis. kebijakan/iframe) — biarkan; status tetap sinkron
-      // lewat event fullscreenchange.
+      await document.documentElement.requestFullscreen();
+    } catch (e) {
+      clearTimeout(check);
+      toast.warning(
+        `Browser menolak layar penuh${e instanceof Error && e.message ? ` (${e.message})` : ""}. Tekan F11.`,
+        "Layar penuh gagal",
+      );
     }
   };
 
@@ -2365,14 +2362,16 @@ function KioskMenu({
             label={isDark ? "Mode terang" : "Mode gelap"}
             onClick={onToggleTheme}
           />
-          <MenuItem
-            icon={isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-            label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
-            onClick={() => {
-              setOpen(false);
-              void toggleFullscreen();
-            }}
-          />
+          {!browserFullscreen && (
+            <MenuItem
+              icon={isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+              label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
+              onClick={() => {
+                setOpen(false);
+                void toggleFullscreen();
+              }}
+            />
+          )}
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
             icon={<X className="h-4 w-4" />}
@@ -2383,8 +2382,18 @@ function KioskMenu({
               onExit();
             }}
           />
+          {onMinimizeBrowser && (
+            <MenuItem
+              icon={<Minimize2 className="h-4 w-4" />}
+              label="Perkecil Browser"
+              onClick={() => {
+                setOpen(false);
+                onMinimizeBrowser();
+              }}
+            />
+          )}
           <MenuItem
-            icon={<Power className="h-4 w-4" />}
+            icon={<AppWindow className="h-4 w-4" />}
             label="Tutup Browser"
             danger
             onClick={() => {
@@ -2392,6 +2401,17 @@ function KioskMenu({
               onCloseBrowser();
             }}
           />
+          {onShutdown && (
+            <MenuItem
+              icon={<Power className="h-4 w-4" />}
+              label="Matikan Perangkat"
+              danger
+              onClick={() => {
+                setOpen(false);
+                onShutdown();
+              }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -2516,7 +2536,8 @@ function ActionRow({
   onToggleExempt,
 }: {
   onReset: () => void;
-  onDemo: () => void;
+  /** Tanpa handler (build produksi) → tombol Demo Scan disembunyikan. */
+  onDemo?: () => void;
   demoLoading: boolean;
   showExempt?: boolean;
   exemptActive?: boolean;
@@ -2544,19 +2565,24 @@ function ActionRow({
         </button>
       )}
       <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-        <button
-          type="button"
-          onClick={onDemo}
-          disabled={demoLoading}
-          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          {demoLoading ? "Memproses…" : "Demo Scan"}
-        </button>
+        {onDemo && (
+          <button
+            type="button"
+            onClick={onDemo}
+            disabled={demoLoading}
+            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            {demoLoading ? "Memproses…" : "Demo Scan"}
+          </button>
+        )}
         <button
           type="button"
           onClick={onReset}
-          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15"
+          className={cn(
+            "inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15",
+            !onDemo && "flex-1",
+          )}
           title="Reset stats & tampilan"
         >
           <RotateCcw className="h-3.5 w-3.5" />
