@@ -36,25 +36,43 @@ async function ensureOperator(data: {
   );
 }
 
+// Password contoh dari .env.example / .env.production.example — tidak boleh
+// dipakai untuk admin produksi.
+const PLACEHOLDER_ADMIN_PASSWORDS = ["ChangeMe!2026", "GANTI_PASSWORD_ADMIN_KUAT"];
+const MIN_PROD_ADMIN_PASSWORD = 12;
+
 async function main() {
-  // F-04: jangan seed akun/PIN demo yang dapat ditebak di produksi.
+  const isProd = process.env.NODE_ENV === "production";
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe!2026";
+
+  // F-04: admin awal tetap dibuat di produksi, tapi wajib password sendiri.
   if (
-    process.env.NODE_ENV === "production" &&
-    process.env.SEED_ALLOW_DEMO !== "true"
+    isProd &&
+    (adminPassword.length < MIN_PROD_ADMIN_PASSWORD ||
+      PLACEHOLDER_ADMIN_PASSWORDS.includes(adminPassword))
   ) {
+    throw new Error(
+      `[seed] NODE_ENV=production: SEED_ADMIN_PASSWORD wajib diisi password sendiri ` +
+        `(min ${MIN_PROD_ADMIN_PASSWORD} karakter, bukan nilai contoh).`,
+    );
+  }
+
+  await ensureOperator({
+    email: process.env.SEED_ADMIN_EMAIL ?? "admin@afvs.local",
+    password: adminPassword,
+    name: process.env.SEED_ADMIN_NAME ?? "Admin",
+    role: "admin",
+  });
+
+  // F-04: jangan seed akun/PIN demo yang dapat ditebak di produksi.
+  if (isProd && process.env.SEED_ALLOW_DEMO !== "true") {
     console.log(
       "[seed] NODE_ENV=production → lewati seed akun demo (set SEED_ALLOW_DEMO=true untuk memaksa).",
     );
     return;
   }
 
-  // Admin & operator demo
-  await ensureOperator({
-    email: process.env.SEED_ADMIN_EMAIL ?? "admin@afvs.local",
-    password: process.env.SEED_ADMIN_PASSWORD ?? "ChangeMe!2026",
-    name: process.env.SEED_ADMIN_NAME ?? "Admin",
-    role: "admin",
-  });
+  // Operator demo
   await ensureOperator({
     email: "operator@afvs.local",
     password: "operator123",

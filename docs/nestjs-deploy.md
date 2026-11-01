@@ -12,7 +12,7 @@ Checklist go-live yang harus dipenuhi di server (bukan di kode):
 - [ ] **F-03 — `NODE_ENV=production` + DB user non-root.** Set di `.env` (§4). Backend kini **gagal-cepat** bila prod tapi `CORS_ORIGIN=localhost` atau `DATABASE_URL` pakai `root` — jadi konfig lemah tak akan boot.
 - [ ] **F-01 — Secret kuat.** `JWT_SECRET` & `PIN_LOOKUP_SECRET` masing-masing ≥32 char acak (`openssl rand -base64 48`). Disimpan hanya di `.env` server / secret manager, JANGAN di git.
 - [ ] **F-06 — Enkripsi at-rest + retensi.** Retensi foto wajah **sudah otomatis** via `FACE_RETENTION_DAYS` (default 30). Tambahkan **enkripsi disk** untuk volume DB & `uploads/` (LUKS / encrypted dataset) — lihat §3a.
-- [ ] **F-04 — Tanpa akun demo.** Dengan `NODE_ENV=production`, `prisma/seed.ts` **otomatis melewati** akun/PIN demo (kecuali `SEED_ALLOW_DEMO=true`). Seed hanya admin awal lalu wajibkan ganti password.
+- [ ] **F-04 — Tanpa akun demo.** Dengan `NODE_ENV=production`, `prisma/seed.ts` **otomatis melewati** akun/PIN demo (kecuali `SEED_ALLOW_DEMO=true`). Seed hanya membuat admin awal dari `SEED_ADMIN_*` dan **menolak jalan** bila `SEED_ADMIN_PASSWORD` < 12 karakter atau masih nilai contoh. Wajib-ganti-password saat login pertama belum ada.
 - [ ] **PDP (hukum):** dasar pemrosesan + pemberitahuan/persetujuan penumpang + penanggung jawab (DPO). Libatkan tim hukum sebelum go-live.
 
 > **Catatan DB:** provider = **MySQL** (sesuai `prisma/schema.prisma`). Skema diterapkan via `prisma db push`. Folder `prisma/migrations/` lama bersintaks Postgres & **tidak dipakai** — abaikan/hapus saja; **jangan** jalankan `migrate deploy`.
@@ -85,7 +85,8 @@ nano .env       # WAJIB: NODE_ENV=production, DATABASE_URL (user non-root),
 pnpm install --frozen-lockfile
 npx prisma generate
 npx prisma db push          # terapkan skema (MySQL; history migration lama stale)
-npx ts-node prisma/seed.ts  # F-04: dgn NODE_ENV=production hanya admin awal yg dibuat
+npx ts-node prisma/seed.ts  # F-04: dgn NODE_ENV=production hanya admin awal (SEED_ADMIN_*) yg dibuat
+                            # login admin: /login → tab Email & Password
 
 pnpm run build
 ```
