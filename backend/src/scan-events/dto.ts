@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import {
+  IsBoolean,
   IsDateString,
   IsIn,
   IsNumber,
@@ -18,6 +19,7 @@ const RESULT_STATUSES = [
   "FLIGHT_NOT_ACTIVE",
   "DUPLICATE_SCAN",
   "VALID_FLIGHT",
+  "KTP_MISMATCH",
 ] as const;
 
 export class PushScanDto {
@@ -98,6 +100,17 @@ export class PushScanDto {
   @IsOptional()
   @IsDateString()
   ktpCapturedAt?: string;
+}
+
+/** Keputusan petugas setelah membandingkan nama di card dengan KTP/SIM. */
+export class IdentityDecisionDto {
+  @ApiProperty({ description: "true = identitas sesuai boarding pass" })
+  @IsBoolean()
+  match!: boolean;
+
+  @ApiProperty({ example: "2026-06-12T08:30:10.000Z" })
+  @IsDateString()
+  decidedAt!: string;
 }
 
 export class ListScansQuery {

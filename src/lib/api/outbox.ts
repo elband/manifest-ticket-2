@@ -11,6 +11,7 @@ import { getSettings } from "../settings";
 import type { ScanEvent } from "../types";
 import {
   ScanPushFields,
+  apiDecideIdentity,
   apiHealth,
   apiPushScan,
   getApiUser,
@@ -18,8 +19,11 @@ import {
 } from "./client";
 
 export interface ApiOutboxItem {
-  id: string; // = eventId
+  id: string; // = eventId (scan) atau `${eventId}#identity` (keputusan)
   fields: ScanPushFields;
+  /** Ada → item ini keputusan petugas cek KTP/SIM untuk scan `fields.eventId`
+   *  yang sudah terkirim (PATCH), bukan push scan baru. */
+  identity?: { match: boolean; decidedAt: string };
   faceCaptureId: string | null;
   attempts: number;
   lastAttemptAt: string | null;
@@ -186,7 +190,64 @@ export function enqueueScanPush(event: ScanEvent): void {
   if (!isBrowser()) return;
   if (!getSettings().apiSyncEnabled) return;
 
-  const fields: ScanPushFields = {
+  const item: ApiOutboxItem = {
+    id: event.id,
+    fields: toPushFields(event),
+    faceCaptureId: event.faceCaptureId ?? null,
+    attempts: 0,
+    lastAttemptAt: null,
+    lastError: null,
+    enqueuedAt: new Date().toISOString(),
+    status: "pending",
+  };
+
+  const queue = readQueue().filter((q) => q.id !== item.id);
+  queue.push(item);
+  writeQueue(queue);
+}
+
+/**
+ * Kirim keputusan petugas "Sesuai"/"Tidak sesuai" (cek KTP/SIM) ke backend.
+ * `event` = scan event yang SUDAH diperbarui lokal. Bila push scan-nya masih
+ * menunggu di antrean, cukup timpa field-nya (status final ikut terkirim);
+ * bila sudah terkirim / sedang dikirim, antre PATCH terpisah di belakangnya.
+ */
+export function enqueueIdentityDecision(
+  event: ScanEvent,
+  match: boolean,
+  decidedAt: string,
+): void {
+  if (!isBrowser()) return;
+  if (!getSettings().apiSyncEnabled) return;
+  if (event.isTest) return; // scan penerbangan uji tak pernah dikirim
+
+  const queue = readQueue();
+  const queued = queue.find((q) => q.id === event.id);
+  if (queued && queued.status !== "syncing") {
+    writeQueue(
+      queue.map((q) =>
+        q.id === event.id ? { ...q, fields: toPushFields(event) } : q,
+      ),
+    );
+    return;
+  }
+
+  const item: ApiOutboxItem = {
+    id: `${event.id}#identity`,
+    fields: toPushFields(event),
+    identity: { match, decidedAt },
+    faceCaptureId: null,
+    attempts: 0,
+    lastAttemptAt: null,
+    lastError: null,
+    enqueuedAt: new Date().toISOString(),
+    status: "pending",
+  };
+  writeQueue([...queue.filter((q) => q.id !== item.id), item]);
+}
+
+function toPushFields(event: ScanEvent): ScanPushFields {
+  return {
     eventId: event.id,
     rawBarcode: event.rawBarcode,
     flightNumber: event.parsedFlightNumber,
@@ -203,21 +264,6 @@ export function enqueueScanPush(event: ScanEvent): void {
     ktpSimilarity: event.ktpVerification?.similarity ?? null,
     ktpCapturedAt: event.ktpVerification?.capturedAt ?? null,
   };
-
-  const item: ApiOutboxItem = {
-    id: event.id,
-    fields,
-    faceCaptureId: event.faceCaptureId ?? null,
-    attempts: 0,
-    lastAttemptAt: null,
-    lastError: null,
-    enqueuedAt: new Date().toISOString(),
-    status: "pending",
-  };
-
-  const queue = readQueue().filter((q) => q.id !== item.id);
-  queue.push(item);
-  writeQueue(queue);
 }
 
 /**
@@ -276,10 +322,15 @@ export async function flushApiOutbox(opts?: {
       );
       writeQueue(queue);
 
-      const faceBlob = item.faceCaptureId
-        ? await facePhotoStore.get(item.faceCaptureId)
-        : null;
-      const result = await apiPushScan(item.fields, faceBlob);
+      let result;
+      if (item.identity) {
+        result = await apiDecideIdentity(item.fields.eventId, item.identity);
+      } else {
+        const faceBlob = item.faceCaptureId
+          ? await facePhotoStore.get(item.faceCaptureId)
+          : null;
+        result = await apiPushScan(item.fields, faceBlob);
+      }
 
       queue = readQueue();
       if (result.ok) {

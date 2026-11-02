@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -18,7 +19,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { extname, join } from "node:path";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { JwtPayload } from "../auth/auth.service";
-import { ListScansQuery, PushScanDto } from "./dto";
+import { IdentityDecisionDto, ListScansQuery, PushScanDto } from "./dto";
 import { ScanEventsService } from "./scan-events.service";
 
 @ApiTags("scan-events")
@@ -73,6 +74,16 @@ export class ScanEventsController {
   @Get()
   list(@Req() req: { user: JwtPayload }, @Query() q: ListScansQuery) {
     return this.svc.list(q, req.user); // F-05: scoping per-station/role
+  }
+
+  /** Keputusan petugas "Sesuai"/"Tidak sesuai" (cek KTP/SIM) setelah scan. */
+  @Patch(":eventId/identity")
+  decideIdentity(
+    @Req() req: { user: JwtPayload },
+    @Param("eventId") eventId: string,
+    @Body() dto: IdentityDecisionDto,
+  ) {
+    return this.svc.decideIdentity(eventId, dto, req.user); // F-05
   }
 
   @Get(":eventId")

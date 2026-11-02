@@ -89,6 +89,7 @@ import {
   type OutboxSummary,
 } from "@/lib/sikerenOutbox";
 import {
+  enqueueIdentityDecision,
   flushApiOutbox,
   getApiOutboxSummary,
   subscribeApiOutbox,
@@ -1162,6 +1163,73 @@ export default function KioskPage() {
     }
   };
 
+  // Petugas membandingkan nama di card dengan KTP/SIM penumpang. Hasilnya
+  // dicatat di scan event (manual_pass / manual_reject) untuk audit dan
+  // dikirim ke backend lewat outbox; "Tidak sesuai" menurunkan scan jadi
+  // ditolak (backend ikut menarik penumpang dari manifest).
+  const decideIdentity = (match: boolean) => {
+    if (!last || last.event.ktpVerification) return;
+    const eventId = last.event.id;
+    const decidedAt = new Date().toISOString();
+    const v: KtpVerification = {
+      status: match ? "manual_pass" : "manual_reject",
+      ocrName: null,
+      capturedAt: decidedAt,
+    };
+    const sync = (patch: Partial<ScanEvent>) => {
+      try {
+        enqueueIdentityDecision({ ...last.event, ...patch }, match, decidedAt);
+        flushApiOutbox().catch(() => {});
+      } catch {
+        /* sync backend tidak boleh mengganggu keputusan petugas */
+      }
+    };
+    if (match) {
+      updateScanEvent(eventId, { ktpVerification: v });
+      sync({ ktpVerification: v });
+      setLast((prev) =>
+        prev && prev.event.id === eventId
+          ? { ...prev, event: { ...prev.event, ktpVerification: v } }
+          : prev,
+      );
+      toast.success("Identitas penumpang sesuai.", "Sesuai");
+      setModalOpen(false);
+    } else {
+      const message =
+        "Ditolak petugas: identitas penumpang tidak sesuai dengan boarding pass.";
+      updateScanEvent(eventId, {
+        ktpVerification: v,
+        resultStatus: "KTP_MISMATCH",
+        message,
+      });
+      sync({ ktpVerification: v, resultStatus: "KTP_MISMATCH", message });
+      setLast((prev) =>
+        prev && prev.event.id === eventId
+          ? {
+              ...prev,
+              event: {
+                ...prev.event,
+                ktpVerification: v,
+                resultStatus: "KTP_MISMATCH",
+                message,
+              },
+            }
+          : prev,
+      );
+      setSessionStats((prev) => ({
+        ...prev,
+        valid: Math.max(0, prev.valid - 1),
+        rejected: prev.rejected + 1,
+      }));
+      setRecent(getScanEvents().slice(0, 6));
+      const today = new Date().toISOString().slice(0, 10);
+      setTodayScans(getScanEvents().filter((e) => e.scannedAt.slice(0, 10) === today));
+      playFeedbackHaptic("KTP_MISMATCH");
+      toast.error(message, "Tidak sesuai");
+    }
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
 
   // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
@@ -1329,7 +1397,12 @@ export default function KioskPage() {
             }
           >
             {isValid ? (
-              <BoardingPassModalBody last={last} />
+              <BoardingPassModalBody
+                last={last}
+                onIdentityDecision={
+                  last.event.ktpVerification ? undefined : decideIdentity
+                }
+              />
             ) : (
               <ResultModalBody last={last} meta={lastMeta} />
             )}
@@ -2845,7 +2918,14 @@ function KtpMatchBadge({ v }: { v: KtpVerification }) {
     >
       <IdCard className="h-4 w-4 shrink-0" />
       <span className="shrink-0 font-semibold">Identitas KTP:</span>
-      <span className="truncate font-bold">{v.ocrName ?? "tidak terbaca"}</span>
+      <span className="truncate font-bold">
+        {v.ocrName ??
+          (v.status === "manual_pass"
+            ? "dicek manual petugas · sesuai"
+            : v.status === "manual_reject"
+              ? "dicek manual petugas · tidak sesuai"
+              : "tidak terbaca")}
+      </span>
       {pct != null && (
         <span className="ml-auto flex shrink-0 items-center gap-1.5">
           <span className="rounded-md bg-white/70 px-1.5 py-0.5 font-black tabular-nums dark:bg-white/10">
@@ -2862,7 +2942,14 @@ function KtpMatchBadge({ v }: { v: KtpVerification }) {
   );
 }
 
-function BoardingPassModalBody({ last }: { last: LastResult }) {
+function BoardingPassModalBody({
+  last,
+  onIdentityDecision,
+}: {
+  last: LastResult;
+  /** Petugas membandingkan nama dengan KTP/SIM: true = sesuai. */
+  onIdentityDecision?: (match: boolean) => void;
+}) {
   const { flight, parsed, passengerName } = last;
   if (!flight || !parsed) return null;
   const meta = getAirlineMeta(flight.airlineCode);
@@ -2953,20 +3040,27 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
               </div>
             </div>
 
-            {/* Nama penumpang */}
-            <div className="relative mt-5">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
-                Penumpang
+            {/* Nama penumpang — fokus utama: petugas mencocokkan dengan KTP/SIM.
+                Tidak di-truncate supaya nama panjang terbaca utuh. */}
+            <div className="relative mt-5 rounded-2xl bg-sky-50 px-5 py-4 ring-2 ring-sky-200">
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-sky-700">
+                <IdCard className="h-4 w-4" />
+                Nama penumpang · cocokkan dengan identitas
               </p>
-              <p className="mt-0.5 truncate text-2xl font-black tracking-tight text-slate-900" title={name}>
+              <p className="mt-1 break-words text-4xl font-black leading-tight tracking-tight text-slate-900">
                 {name}
+              </p>
+              <p className="mt-1.5 text-[12px] font-medium leading-snug text-slate-600">
+                {parsed.passengerNameTruncated
+                  ? "Nama di boarding pass terpotong (maks. 20 huruf) — cocokkan bagian awal nama. Urutan nama bisa berbeda dari identitas."
+                  : "Urutan nama bisa berbeda dari identitas, dan gelar (MR/MRS/MS) bisa ikut tercetak."}
               </p>
             </div>
 
             {/* Rute */}
             <div className="relative mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-2xl bg-slate-50 px-5 py-4 ring-1 ring-slate-100">
               <div className="min-w-0">
-                <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
+                <p className="text-3xl font-black leading-none tracking-tight text-slate-900">
                   {flight.originAirport}
                 </p>
                 <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
@@ -2989,7 +3083,7 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
                 </p>
               </div>
               <div className="min-w-0 text-right">
-                <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
+                <p className="text-3xl font-black leading-none tracking-tight text-slate-900">
                   {flight.destinationAirport}
                 </p>
                 <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
@@ -3031,7 +3125,7 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
                 <p
                   className={cn(
                     "font-black leading-none tracking-tight",
-                    gate.length > 4 ? "text-3xl" : "text-6xl",
+                    gate.length > 4 ? "text-3xl" : "text-5xl",
                   )}
                   style={{ color: accentText }}
                 >
@@ -3042,7 +3136,7 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
                   Kursi
                 </p>
-                <p className="text-5xl font-black leading-none tracking-tight text-slate-900">
+                <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
                   {parsed.seatNumber}
                 </p>
               </div>
@@ -3071,6 +3165,27 @@ function BoardingPassModalBody({ last }: { last: LastResult }) {
           </span>
         </div>
       </div>
+
+      {onIdentityDecision && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => onIdentityDecision(false)}
+            className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-rose-600 text-lg font-black text-white shadow-md transition hover:bg-rose-700 active:scale-[0.98]"
+          >
+            <XCircle className="h-6 w-6" />
+            Tidak sesuai
+          </button>
+          <button
+            type="button"
+            onClick={() => onIdentityDecision(true)}
+            className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-lg font-black text-white shadow-md transition hover:bg-emerald-700 active:scale-[0.98]"
+          >
+            <CheckCircle2 className="h-6 w-6" />
+            Sesuai
+          </button>
+        </div>
+      )}
     </div>
   );
 }

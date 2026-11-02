@@ -384,6 +384,29 @@ export async function apiPushScan(
   }
 }
 
+/** Keputusan petugas cek KTP/SIM untuk scan yang sudah ter-push (idempoten). */
+export async function apiDecideIdentity(
+  eventId: string,
+  decision: { match: boolean; decidedAt: string },
+): Promise<ApiResult<unknown>> {
+  try {
+    const res = await authedFetch(
+      `/scan-events/${encodeURIComponent(eventId)}/identity`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(decision),
+      },
+      PUSH_TIMEOUT_MS,
+    );
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
 export interface ApiScanEvent {
   id: string;
   eventId: string;

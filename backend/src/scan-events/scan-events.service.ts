@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
-import { ListScansQuery, PushScanDto } from "./dto";
+import { IdentityDecisionDto, ListScansQuery, PushScanDto } from "./dto";
 import { manifestDedupKey } from "../common/manifest";
 
 // F-05: supervisor/admin boleh lintas-station; operator hanya station-nya.
@@ -166,6 +166,81 @@ export class ScanEventsService {
         // Perkaya field yang sebelumnya kosong tanpa menimpa data yang sudah ada.
         ...(existing.passengerName ? {} : { passengerName: p.passengerName }),
         ...(existing.seat ? {} : { seat: p.seat }),
+      },
+    });
+  }
+
+  /**
+   * Catat keputusan petugas setelah mencocokkan nama dengan KTP/SIM.
+   * "Tidak sesuai" menurunkan scan VALID jadi KTP_MISMATCH dan menarik
+   * penumpang dari manifest. Idempoten — aman dikirim ulang oleh outbox.
+   */
+  async decideIdentity(
+    eventId: string,
+    dto: IdentityDecisionDto,
+    user: JwtPayload,
+  ) {
+    const ev = await this.findByEventId(eventId, user);
+    const decidedAt = new Date(dto.decidedAt);
+
+    if (dto.match) {
+      return this.prisma.scanEvent.update({
+        where: { eventId },
+        data: { ktpStatus: "manual_pass", ktpCapturedAt: decidedAt },
+      });
+    }
+
+    const wasValid = ev.resultStatus === "VALID_FLIGHT";
+    const updated = await this.prisma.scanEvent.update({
+      where: { eventId },
+      data: {
+        ktpStatus: "manual_reject",
+        ktpCapturedAt: decidedAt,
+        ...(wasValid
+          ? {
+              resultStatus: "KTP_MISMATCH",
+              message:
+                "Ditolak petugas: identitas penumpang tidak sesuai dengan boarding pass.",
+            }
+          : {}),
+      },
+    });
+    if (wasValid && ev.flightId) {
+      await this.recomputeManifestPassenger(ev.flightId, ev.ticketNumber, ev.pnr);
+    }
+    return updated;
+  }
+
+  /**
+   * Hitung ulang satu baris manifest dari scan VALID_FLIGHT yang tersisa
+   * (sama dengan aturan rebuildManifests). Tak ada lagi → baris dihapus.
+   */
+  private async recomputeManifestPassenger(
+    flightId: string,
+    ticketNumber: string | null,
+    pnr: string | null,
+  ) {
+    const dedupKey = manifestDedupKey(ticketNumber, pnr);
+    if (!dedupKey) return;
+
+    const valid = (
+      await this.prisma.scanEvent.findMany({
+        where: { flightId, resultStatus: "VALID_FLIGHT" },
+        select: { ticketNumber: true, pnr: true, scannedAt: true },
+        orderBy: { scannedAt: "asc" },
+      })
+    ).filter((e) => manifestDedupKey(e.ticketNumber, e.pnr) === dedupKey);
+
+    if (valid.length === 0) {
+      await this.prisma.flightPassenger.deleteMany({ where: { flightId, dedupKey } });
+      return;
+    }
+    await this.prisma.flightPassenger.updateMany({
+      where: { flightId, dedupKey },
+      data: {
+        scanCount: valid.length,
+        firstScannedAt: valid[0].scannedAt,
+        lastScannedAt: valid[valid.length - 1].scannedAt,
       },
     });
   }

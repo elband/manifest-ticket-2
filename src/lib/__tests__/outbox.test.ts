@@ -2,8 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Push ke backend & token dikendalikan dari tes; modul lain memakai aslinya.
 const pushMock = vi.fn();
+const decideMock = vi.fn();
 vi.mock("../api/client", () => ({
   apiPushScan: (...args: unknown[]) => pushMock(...args),
+  apiDecideIdentity: (...args: unknown[]) => decideMock(...args),
   getToken: () => tokenRef.value,
   getApiUser: () => null,
 }));
@@ -13,6 +15,7 @@ import {
   classifyPushError,
   recoverOutboxItems,
   enqueueScanPush,
+  enqueueIdentityDecision,
   flushApiOutbox,
   getApiOutboxSummary,
   type ApiOutboxItem,
@@ -169,5 +172,55 @@ describe("flushApiOutbox saat jaringan terganggu", () => {
     const s = getApiOutboxSummary();
     expect(s.failed).toBe(1);
     expect(s.pending).toBe(0);
+  });
+});
+
+describe("enqueueIdentityDecision (cek KTP/SIM petugas)", () => {
+  const decidedAt = "2026-11-01T08:00:10.000Z";
+  const rejected = (id: string): ScanEvent => ({
+    ...scan(id),
+    resultStatus: "KTP_MISMATCH",
+    ktpVerification: { status: "manual_reject", ocrName: null, capturedAt: decidedAt },
+  });
+
+  beforeEach(() => {
+    installFakeWindow();
+    tokenRef.value = "tok";
+    pushMock.mockReset();
+    decideMock.mockReset();
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("push scan masih antre → field-nya ditimpa, tak ada PATCH terpisah", async () => {
+    enqueueScanPush(scan("scn_a"));
+    enqueueIdentityDecision(rejected("scn_a"), false, decidedAt);
+    expect(getApiOutboxSummary().total).toBe(1);
+
+    pushMock.mockResolvedValue({ ok: true, status: 201, data: {} });
+    await flushApiOutbox();
+    expect(pushMock).toHaveBeenCalledTimes(1);
+    expect(pushMock.mock.calls[0][0]).toMatchObject({
+      resultStatus: "KTP_MISMATCH",
+      ktpStatus: "manual_reject",
+    });
+    expect(decideMock).not.toHaveBeenCalled();
+  });
+
+  it("scan sudah terkirim → antre PATCH keputusan", async () => {
+    enqueueScanPush(scan("scn_a"));
+    pushMock.mockResolvedValue({ ok: true, status: 201, data: {} });
+    await flushApiOutbox();
+
+    enqueueIdentityDecision(rejected("scn_a"), false, decidedAt);
+    decideMock.mockResolvedValue({ ok: true, status: 200, data: {} });
+    await flushApiOutbox();
+
+    expect(decideMock).toHaveBeenCalledWith("scn_a", { match: false, decidedAt });
+    expect(getApiOutboxSummary().total).toBe(0);
+  });
+
+  it("scan penerbangan uji → tidak dikirim", () => {
+    enqueueIdentityDecision({ ...rejected("scn_t"), isTest: true }, false, decidedAt);
+    expect(getApiOutboxSummary().total).toBe(0);
   });
 });
