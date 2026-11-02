@@ -138,6 +138,63 @@ sudo certbot --nginx -d api.afvs.example.com   # auto HTTPS
 
 LAN-only? Skip Let's Encrypt, generate self-signed cert + install di tiap klien.
 
+### 6a. Satu host: frontend + backend (layout server produksi)
+
+Bila Next.js (:3000) & NestJS (:3001) dilayani dari host yang sama, `/api/`
+diarahkan ke NestJS — **kecuali `/api/jadwal/`**, yang merupakan route Next.js
+(proxy FIDS, [route.ts](../src/app/api/jadwal/[jenis]/route.ts)). Tanpa blok
+`location /api/jadwal/`, permintaan jadwal ikut ke NestJS dan dijawab
+`404 Cannot GET /api/jadwal/keberangkatan` → jadwal FIDS tak pernah tertarik.
+
+```nginx
+server {
+  listen 80 default_server;
+  server_name _;
+
+  client_max_body_size 4m;
+
+  # Proxy jadwal FIDS = route Next.js. Prefix lebih panjang menang atas /api/.
+  location /api/jadwal/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 60s;   # menarik banyak halaman FIDS (12 dtk/halaman)
+  }
+
+  location /api/ {
+    proxy_pass http://127.0.0.1:3001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 30s;
+  }
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+Cek setelah reload — keduanya harus `200`:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://<server>/api/health
+curl -s -o /dev/null -w "%{http_code}\n" http://<server>/api/jadwal/keberangkatan
+```
+
+Server juga harus bisa menjangkau FIDS (`FIDS_BASE_URL`, default
+`http://103.210.122.2`) dari sisi Next.js.
+
 ## 7. Firewall
 
 ```bash
