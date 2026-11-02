@@ -299,7 +299,11 @@ export default function SettingsPage() {
 
   if (!session) return null;
 
-  const mobileTabOptions = TABS.map((tabDef) => ({
+  // Tab Data (arsip, outbox, reset data) khusus admin.
+  const canSeeData = session.role === "admin";
+  const visibleTabs = TABS.filter((tabDef) => tabDef.id !== "data" || canSeeData);
+
+  const mobileTabOptions = visibleTabs.map((tabDef) => ({
     value: tabDef.id,
     label: t(tabDef.key),
     icon: <tabDef.icon className="h-3.5 w-3.5" />,
@@ -686,7 +690,7 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {tab === "data" && (
+        {tab === "data" && canSeeData && (
           <div className="space-y-5">
             <ListSection
               header="Backup & Arsip"
@@ -775,7 +779,7 @@ export default function SettingsPage() {
           <Card className="animate-fade-up stagger-1 lift">
             <CardBody className="p-2">
               <nav className="space-y-1">
-                {TABS.map(({ id, icon: Icon, key }) => {
+                {visibleTabs.map(({ id, icon: Icon, key }) => {
                   const active = tab === id;
                   return (
                     <button
@@ -1100,7 +1104,7 @@ export default function SettingsPage() {
                 </div>
               )}
 
-              {tab === "data" && (
+              {tab === "data" && canSeeData && (
                 <div className="space-y-3">
                   <DataRow
                     icon={<Download className="h-4 w-4" />}

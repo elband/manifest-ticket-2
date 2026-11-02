@@ -23,6 +23,7 @@ import {
   isAuthed,
   subscribeAuth,
 } from "@/lib/api/client";
+import { getSession } from "@/lib/storage";
 import { Pagination } from "@/components/ui/Pagination";
 
 const PAGE_SIZE = 25; // P-08: render bertahap, bukan 200 baris sekaligus
@@ -69,6 +70,12 @@ export default function AdminScansPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  // Halaman Koneksi Backend khusus admin; role lain login ulang lewat /login.
+  const [canConnect, setCanConnect] = useState(false);
+
+  useEffect(() => {
+    setCanConnect(getSession()?.role === "admin");
+  }, []);
 
   const load = useCallback(async () => {
     if (!isAuthed()) {
@@ -168,14 +175,18 @@ export default function AdminScansPage() {
               Belum tersambung ke backend
             </p>
             <p className="mt-1 text-xs text-ink-muted">
-              Login dulu ke server untuk melihat scan dari kedua pos.
+              {canConnect
+                ? "Login dulu ke server untuk melihat scan dari kedua pos."
+                : "Keluar lalu login ulang untuk menyambung ke server."}
             </p>
-            <Link
-              href="/connect"
-              className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
-            >
-              Buka Koneksi Backend
-            </Link>
+            {canConnect && (
+              <Link
+                href="/connect"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-blue-700"
+              >
+                Buka Koneksi Backend
+              </Link>
+            )}
           </section>
         ) : (
           <>

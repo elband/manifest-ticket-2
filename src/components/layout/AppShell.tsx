@@ -152,13 +152,13 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/seeders/boarding-pass",
         labelKey: "nav.boardingPassSeeder",
         icon: Ticket,
-        roles: ["admin", "supervisor"],
+        roles: ["admin"],
       },
       {
         href: "/connect",
         labelKey: "nav.connect",
         icon: Server,
-        roles: ["admin", "supervisor"],
+        roles: ["admin"],
       },
       {
         href: "/settings",
@@ -169,6 +169,19 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+// Rute yang terdaftar di menu hanya boleh dibuka role yang tercantum —
+// menyembunyikan menu saja tidak cukup karena URL bisa diketik langsung.
+function isRouteAllowed(pathname: string, role: UserRole): boolean {
+  for (const sec of NAV_SECTIONS) {
+    for (const item of sec.items) {
+      if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+        return item.roles.includes(role);
+      }
+    }
+  }
+  return true;
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return <AppShellInner>{children}</AppShellInner>;
@@ -215,6 +228,11 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     }
     if (s.role === "security" && !pathname.startsWith("/scan")) {
       router.replace("/scan/kiosk");
+      return;
+    }
+    if (!isRouteAllowed(pathname, s.role)) {
+      setReady(false);
+      router.replace("/dashboard");
       return;
     }
     setSession(s);
