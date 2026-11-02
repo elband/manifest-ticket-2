@@ -2375,27 +2375,15 @@ function KioskMenu({
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   // Ikuti status fullscreen dari browser (juga saat user keluar via Esc/F11).
+  // Tombol selalu ditampilkan: menebak "browser sudah layar penuh" dari ukuran
+  // jendela keliru di Chromium Lubuntu (zoom < 100% / jendela seukuran layar
+  // tapi taskbar LXQt tetap di atas) sehingga tombolnya hilang.
   const [isFullscreen, setIsFullscreen] = React.useState(false);
-  // Jendela sudah layar penuh di level browser (Chromium --kiosk / F11 /
-  // --start-fullscreen) → fullscreen halaman tak mengubah apa pun & --kiosk
-  // tak bisa keluar dari halaman → tombol disembunyikan.
-  const [browserFullscreen, setBrowserFullscreen] = React.useState(false);
   React.useEffect(() => {
-    const sync = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-      setBrowserFullscreen(
-        !document.fullscreenElement &&
-          window.innerWidth >= screen.width &&
-          window.innerHeight >= screen.height,
-      );
-    };
+    const sync = () => setIsFullscreen(!!document.fullscreenElement);
     sync();
     document.addEventListener("fullscreenchange", sync);
-    window.addEventListener("resize", sync);
-    return () => {
-      document.removeEventListener("fullscreenchange", sync);
-      window.removeEventListener("resize", sync);
-    };
+    return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
   const toast = useToast();
   const toggleFullscreen = async () => {
@@ -2491,7 +2479,7 @@ function KioskMenu({
                 onFullscreenBrowser();
               }}
             />
-          ) : !browserFullscreen && (
+          ) : (
             <MenuItem
               icon={isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
               label={isFullscreen ? "Keluar layar penuh" : "Layar penuh"}
