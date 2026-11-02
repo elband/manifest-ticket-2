@@ -44,7 +44,13 @@ export interface AppSettings {
   allowNoKtpExemption: boolean;
   /** Jenis dokumen identitas yang dibaca di KTP-first: "ktp" | "sim" | "id". */
   idDocType: "ktp" | "sim" | "id";
+  /** Lama card hasil scan (data penumpang) tampil di kiosk, dalam detik.
+   *  0 = tanpa batas waktu (tetap tampil sampai ditutup / scan berikutnya). */
+  kioskResultDurationSec: number;
 }
+
+/** Pilihan lama tampil card hasil scan kiosk (detik). 0 = tanpa batas waktu. */
+export const KIOSK_RESULT_DURATION_OPTIONS = [3, 5, 6, 10, 15, 20, 30, 60, 0] as const;
 
 const KEY = "afvs.settings";
 
@@ -102,6 +108,7 @@ const DEFAULTS: AppSettings = {
   ktpScanFirst: false,
   allowNoKtpExemption: true,
   idDocType: "ktp",
+  kioskResultDurationSec: 6,
 };
 
 function isBrowser() {

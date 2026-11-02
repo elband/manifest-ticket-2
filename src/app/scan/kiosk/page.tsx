@@ -221,7 +221,6 @@ const STATUS_META: Record<
   },
 };
 
-const MODAL_AUTO_CLOSE_MS = 6000;
 
 type ModalToneName = "info" | "warning" | "danger" | "success" | "brand";
 
@@ -674,11 +673,15 @@ export default function KioskPage() {
     };
   }, []);
 
+  // Lama card hasil scan tampil (Pengaturan → Mode Kiosk). 0 = tanpa batas
+  // waktu: card tetap tampil sampai ditutup petugas atau diganti scan berikutnya.
+  const modalAutoCloseMs = Math.max(0, rawSettings.kioskResultDurationSec) * 1000;
+
   React.useEffect(() => {
-    if (!modalOpen) return;
-    const t = setTimeout(() => setModalOpen(false), MODAL_AUTO_CLOSE_MS);
+    if (!modalOpen || modalAutoCloseMs <= 0) return;
+    const t = setTimeout(() => setModalOpen(false), modalAutoCloseMs);
     return () => clearTimeout(t);
-  }, [modalOpen]);
+  }, [modalOpen, modalAutoCloseMs, last?.event.id]);
 
   React.useEffect(() => {
     setOutbox(getOutboxSummary());
@@ -1320,7 +1323,7 @@ export default function KioskPage() {
               <ModalCloseFooter
                 onClose={() => setModalOpen(false)}
                 barGradient={barGradient}
-                durationMs={MODAL_AUTO_CLOSE_MS}
+                durationMs={modalAutoCloseMs}
                 resetKey={last.event.id}
               />
             }
@@ -2770,6 +2773,7 @@ function ModalCloseFooter({
 }) {
   const [remaining, setRemaining] = React.useState(Math.ceil(durationMs / 1000));
   React.useEffect(() => {
+    if (durationMs <= 0) return;
     setRemaining(Math.ceil(durationMs / 1000));
     const start = performance.now();
     const id = window.setInterval(() => {
@@ -2783,6 +2787,11 @@ function ModalCloseFooter({
 
   return (
     <div className="flex w-full items-center gap-3">
+      {durationMs <= 0 ? (
+      <p className="flex-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-ink-subtle">
+        Tampil sampai ditutup
+      </p>
+      ) : (
       <div className="flex-1">
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-white/10">
           <div
@@ -2798,6 +2807,7 @@ function ModalCloseFooter({
           Tutup otomatis dalam {remaining}s
         </p>
       </div>
+      )}
       <button
         type="button"
         onClick={onClose}

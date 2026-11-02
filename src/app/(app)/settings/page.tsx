@@ -54,6 +54,7 @@ import {
 import {
   AppSettings,
   Locale,
+  KIOSK_RESULT_DURATION_OPTIONS,
   RECOMMENDED_BOARDING,
   SikerenSyncMode,
   getSettings,
@@ -572,6 +573,18 @@ export default function SettingsPage() {
                 }
               />
               <ListRow
+                icon={<Timer className="h-4 w-4" />}
+                iconBg="bg-amber-100 text-amber-700"
+                title="Lama tampil data penumpang"
+                subtitle="Durasi card hasil scan di kiosk sebelum tertutup otomatis."
+                trailing={
+                  <KioskResultDurationSelect
+                    value={settings.kioskResultDurationSec}
+                    onChange={(v) => update({ kioskResultDurationSec: v })}
+                  />
+                }
+              />
+              <ListRow
                 icon={<ScanFace className="h-4 w-4" />}
                 iconBg="bg-cyan-100 text-cyan-700"
                 title="Validasi wajah sebelum scan"
@@ -998,6 +1011,17 @@ export default function SettingsPage() {
                       checked={settings.kioskAutoEnter}
                       onChange={(v) => update({ kioskAutoEnter: v })}
                     />
+                    <DataRow
+                      icon={<Timer className="h-4 w-4" />}
+                      title="Lama tampil data penumpang"
+                      description="Berapa lama card data penumpang tampil setelah boarding pass di-scan. Pilih “Tanpa batas waktu” agar card tetap tampil sampai ditutup petugas atau diganti scan berikutnya."
+                      action={
+                        <KioskResultDurationSelect
+                          value={settings.kioskResultDurationSec}
+                          onChange={(v) => update({ kioskResultDurationSec: v })}
+                        />
+                      }
+                    />
                     <ToggleRow
                       icon={<ScanFace className="h-4 w-4" />}
                       title="Validasi wajah sebelum scan"
@@ -1405,6 +1429,32 @@ function NumberRow({
         )}
       </div>
     </div>
+  );
+}
+
+function KioskResultDurationSelect({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  const options: readonly number[] = KIOSK_RESULT_DURATION_OPTIONS;
+  // Nilai lama di luar daftar (mis. diubah manual) tetap ditampilkan.
+  const all = options.includes(value) ? options : [value, ...options];
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(parseInt(e.target.value, 10) || 0)}
+      aria-label="Lama tampil data penumpang"
+      className="h-8 shrink-0 rounded-xl border-0 bg-white px-2.5 text-sm font-semibold text-slate-800 ring-1 ring-slate-200 focus:ring-2 focus:ring-blue-400"
+    >
+      {all.map((sec) => (
+        <option key={sec} value={sec}>
+          {sec === 0 ? "Tanpa batas waktu" : `${sec} detik`}
+        </option>
+      ))}
+    </select>
   );
 }
 
