@@ -69,6 +69,11 @@ export function canManageFlights(role: UserRole | undefined): boolean {
   return role === "admin" || role === "supervisor";
 }
 
+// Hapus flight khusus admin — selaras dengan @Roles("admin") di DELETE /flights/:id.
+export function canDeleteFlights(role: UserRole | undefined): boolean {
+  return role === "admin";
+}
+
 export function canScan(role: UserRole | undefined): boolean {
   return (
     role === "security" || role === "admin" || role === "supervisor"

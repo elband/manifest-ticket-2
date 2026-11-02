@@ -49,7 +49,7 @@ import {
   getSession,
   updateFlight,
 } from "@/lib/storage";
-import { canManageFlights } from "@/lib/auth";
+import { canDeleteFlights, canManageFlights } from "@/lib/auth";
 import { cn, formatDateTime } from "@/lib/utils";
 import { manifestDedupKey } from "@/lib/manifest";
 import { getBoardingProgress, boardingProgressFromCount } from "@/lib/boarding";
@@ -246,7 +246,10 @@ export default function FlightDetailPage() {
     );
   }
 
+  const canDelete = canDeleteFlights(session?.role);
+
   const onDelete = async () => {
+    if (!canDelete) return;
     const res = await confirm({
       title: `Hapus flight ${flight.flightNumber}?`,
       description:
@@ -631,13 +634,15 @@ export default function FlightDetailPage() {
                 onClick={() => router.push(`/flights/${flight.id}/edit`)}
                 showChevron
               />
-              <ListRow
-                icon={<Trash2 className="h-4 w-4" />}
-                title="Hapus penerbangan"
-                tone="danger"
-                onClick={onDelete}
-                showChevron
-              />
+              {canDelete && (
+                <ListRow
+                  icon={<Trash2 className="h-4 w-4" />}
+                  title="Hapus penerbangan"
+                  tone="danger"
+                  onClick={onDelete}
+                  showChevron
+                />
+              )}
             </>
           )}
         </ListSection>
@@ -746,10 +751,12 @@ export default function FlightDetailPage() {
                     Edit
                   </Button>
                 </Link>
-                <Button size="sm" variant="danger" onClick={onDelete}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Hapus
-                </Button>
+                {canDelete && (
+                  <Button size="sm" variant="danger" onClick={onDelete}>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Hapus
+                  </Button>
+                )}
               </>
             )}
           </div>

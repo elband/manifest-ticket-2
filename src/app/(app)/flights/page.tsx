@@ -36,7 +36,7 @@ import {
   dateStringFromOffset,
   cn,
 } from "@/lib/utils";
-import { canManageFlights } from "@/lib/auth";
+import { canDeleteFlights, canManageFlights } from "@/lib/auth";
 import {
   saveCustomSeed,
   hasCustomSeed,
@@ -97,6 +97,7 @@ export default function FlightsPage() {
   const confirm = useConfirm();
   const [session, setSessionState] = useState<SessionUser | null>(null);
   const canManage = canManageFlights(session?.role);
+  const canDelete = canDeleteFlights(session?.role);
   const [hasSnapshot, setHasSnapshot] = useState(false);
   const [pullingFids, setPullingFids] = useState(false);
 
@@ -287,6 +288,7 @@ export default function FlightsPage() {
     0;
 
   const onDelete = async (id: string) => {
+    if (!canDelete) return;
     const target = flights.find((f) => f.id === id);
     const res = await confirm({
       title: `Hapus flight ${target?.flightNumber ?? ""}?`,
@@ -550,6 +552,7 @@ export default function FlightsPage() {
                     settings={settings}
                     progress={boardingProgressFromCount(f, boardedOf(f))}
                     canManage={canManage}
+                    canDelete={canDelete}
                     onDelete={onDelete}
                   />
                 ))}
@@ -885,6 +888,7 @@ function FlightBrandCard({
   settings,
   progress,
   canManage,
+  canDelete,
   onDelete,
 }: {
   readonly flight: Flight;
@@ -893,6 +897,7 @@ function FlightBrandCard({
   readonly settings: ReturnType<typeof getSettings>;
   readonly progress: ReturnType<typeof getBoardingProgress>;
   readonly canManage: boolean;
+  readonly canDelete: boolean;
   readonly onDelete: (id: string) => void;
 }) {
   const meta = getAirlineMeta(flight.airlineCode);
@@ -1020,14 +1025,16 @@ function FlightBrandCard({
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => onDelete(flight.id)}
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/15"
-                  title="Hapus"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    onClick={() => onDelete(flight.id)}
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-500/15"
+                    title="Hapus"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </>
             )}
           </div>
