@@ -38,6 +38,10 @@ import {
   Minimize2,
   Maximize,
   Minimize,
+  UserRoundCheck,
+  Delete,
+  CornerDownLeft,
+  AlertCircle,
 } from "lucide-react";
 import { useCountUp } from "@/lib/useCountUp";
 import {
@@ -91,6 +95,7 @@ import {
   type ApiOutboxSummary,
 } from "@/lib/api/outbox";
 import { logout } from "@/lib/auth";
+import { signInWithPin } from "@/lib/pinLogin";
 import {
   getSettings,
   saveSettings,
@@ -386,6 +391,18 @@ export default function KioskPage() {
   // Konfirmasi aksi perangkat: tutup / perkecil browser, matikan perangkat.
   const [powerConfirm, setPowerConfirm] = React.useState<PowerAction | null>(null);
   const [powerBusy, setPowerBusy] = React.useState(false);
+  // Ganti petugas lewat PIN tanpa keluar kiosk. Selama modal PIN terbuka,
+  // input scanner tersembunyi dijeda supaya digit PIN tidak terkirim sebagai scan.
+  const [officerSwitchOpen, setOfficerSwitchOpen] = React.useState(false);
+  const scanPausedRef = React.useRef(false);
+  React.useEffect(() => {
+    scanPausedRef.current = officerSwitchOpen;
+    if (officerSwitchOpen) {
+      setValue("");
+    } else {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  }, [officerSwitchOpen]);
   // Agen lokal Lubuntu (kiosk-agent/) — aksi yang didukungnya di perangkat
   // ini. Tanpa agen: kosong → "Matikan" & "Perkecil" disembunyikan.
   const [agentActions, setAgentActions] = React.useState<KioskAgentAction[]>([]);
@@ -611,7 +628,7 @@ export default function KioskPage() {
   React.useEffect(() => {
     const t = window.setInterval(() => {
       const el = inputRef.current;
-      if (!el) return;
+      if (!el || scanPausedRef.current) return;
       const active = document.activeElement as HTMLElement | null;
       if (active === el) return;
       // jangan rebut focus saat user sedang berinteraksi dengan kontrol form
@@ -638,14 +655,15 @@ export default function KioskPage() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (ktpFlowOpen) return;
+        // Modal PIN menutup dirinya sendiri lewat Escape (jangan keluar kiosk).
+        if (ktpFlowOpen || officerSwitchOpen) return;
         if (modalOpen) setModalOpen(false);
         else router.push("/scan");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, modalOpen, ktpFlowOpen]);
+  }, [router, modalOpen, ktpFlowOpen, officerSwitchOpen]);
 
   React.useEffect(() => {
     return () => {
@@ -1209,6 +1227,7 @@ export default function KioskPage() {
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
             onReset={handleReset}
+            onSwitchOfficer={() => setOfficerSwitchOpen(true)}
             onExit={exitKiosk}
             onCloseBrowser={() => setPowerConfirm("close")}
             onShutdown={
@@ -1236,6 +1255,9 @@ export default function KioskPage() {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
+        // Nonaktif selama keypad PIN terbuka: input tak bisa difokus/diketik,
+        // jadi digit PIN tidak pernah terkirim sebagai scan.
+        disabled={officerSwitchOpen}
         autoComplete="off"
         spellCheck={false}
         aria-label="Scanner input"
@@ -1420,6 +1442,17 @@ export default function KioskPage() {
         );
       })()}
 
+      <OfficerSwitchModal
+        open={officerSwitchOpen}
+        currentName={session?.name ?? null}
+        onClose={() => setOfficerSwitchOpen(false)}
+        onSwitched={(user) => {
+          setSession(user);
+          setOfficerSwitchOpen(false);
+          toast.success(`Sekarang bertugas: ${user.name}`, "Petugas berganti");
+        }}
+      />
+
       <KtpVerifyModal
         open={ktpFlow !== null}
         expectedName={ktpFlow?.expectedName ?? null}
@@ -1588,7 +1621,7 @@ function ScanReadyCard({
     ? "Identitas terbaca — sekarang scan boarding pass penumpang."
     : waitingKtp
       ? "Tunjukkan KTP ke kamera untuk membaca identitas penumpang."
-      : "Arahkan scanner USB ke boarding pass untuk memulai validasi.";
+      : "Arahkan Boarding pass ke scanner untuk memulai validasi.";
 
   return (
     <div className="relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-xl bg-kiosk-paper px-6 py-6 tall:py-8 shadow-[0_30px_60px_-30px_rgba(30,34,40,0.45)] dark:bg-kiosk-asphalt">
@@ -2128,12 +2161,187 @@ function HardRefreshButton() {
   );
 }
 
+/* ─────────────── Ganti petugas (keypad PIN) ─────────────── */
+
+const OFFICER_PIN_MAX = 6;
+
+/**
+ * Keypad PIN untuk mengganti petugas tanpa keluar kiosk. Sesi petugas lama
+ * baru diganti bila PIN berhasil; gagal/batal → petugas lama tetap bertugas.
+ * PIN juga bisa diketik lewat keyboard (angka, Backspace, Enter).
+ */
+function OfficerSwitchModal({
+  open,
+  currentName,
+  onClose,
+  onSwitched,
+}: {
+  open: boolean;
+  currentName: string | null;
+  onClose: () => void;
+  onSwitched: (user: SessionUser) => void;
+}) {
+  const [pin, setPin] = React.useState("");
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setPin("");
+    setError(null);
+    setLoading(false);
+  }, [open]);
+
+  const pressDigit = (d: string) => {
+    setError(null);
+    setPin((p) => (p.length >= OFFICER_PIN_MAX ? p : p + d));
+  };
+  const pressBackspace = () => {
+    setError(null);
+    setPin((p) => p.slice(0, -1));
+  };
+
+  const submit = async () => {
+    if (loading || pin.length < 4) return;
+    setLoading(true);
+    setError(null);
+    const res = await signInWithPin(pin);
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error);
+      setPin("");
+      return;
+    }
+    onSwitched(res.user);
+  };
+
+  // Ref ke submit terbaru supaya listener keyboard tidak memakai state basi.
+  const submitRef = React.useRef(submit);
+  submitRef.current = submit;
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        pressDigit(e.key);
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        pressBackspace();
+      } else if (e.key === "Enter") {
+        // preventDefault juga mencegah Enter "mengklik" tombol yang sedang fokus.
+        e.preventDefault();
+        void submitRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const keyClass =
+    "flex h-14 items-center justify-center rounded-xl bg-slate-100 text-2xl font-bold text-kiosk-asphalt transition active:scale-95 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/10 dark:text-white dark:hover:bg-white/15";
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => {
+        if (!loading) onClose();
+      }}
+      tone="info"
+      size="sm"
+      title="Ganti petugas"
+      description={
+        currentName
+          ? `Sekarang bertugas: ${currentName}. Masukkan PIN petugas pengganti.`
+          : "Masukkan PIN petugas yang akan bertugas."
+      }
+      icon={<UserRoundCheck className="h-5 w-5" />}
+    >
+      <div className="space-y-4 p-1 font-sign">
+        {/* Indikator digit PIN */}
+        <div className="flex items-center justify-center gap-3" aria-live="polite">
+          <span className="sr-only">{pin.length} digit diisi</span>
+          {Array.from({ length: OFFICER_PIN_MAX }).map((_, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className={cn(
+                "h-3.5 w-3.5 rounded-full transition",
+                i < pin.length
+                  ? "bg-kiosk-sign"
+                  : "bg-slate-200 dark:bg-white/15",
+              )}
+            />
+          ))}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5">
+          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+            <button
+              key={d}
+              type="button"
+              onClick={() => pressDigit(d)}
+              disabled={loading}
+              className={keyClass}
+            >
+              {d}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={pressBackspace}
+            disabled={loading || pin.length === 0}
+            aria-label="Hapus"
+            className={keyClass}
+          >
+            <Delete className="h-6 w-6" />
+          </button>
+          <button
+            type="button"
+            onClick={() => pressDigit("0")}
+            disabled={loading}
+            className={keyClass}
+          >
+            0
+          </button>
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={loading || pin.length < 4}
+            aria-label="Masuk"
+            className="flex h-14 items-center justify-center rounded-xl bg-kiosk-sign text-white transition active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {loading ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              <CornerDownLeft className="h-6 w-6" />
+            )}
+          </button>
+        </div>
+
+        {error ? (
+          <p className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-[14px] text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/30">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            {error}
+          </p>
+        ) : (
+          <p className="text-center text-[13px] text-slate-500 dark:text-white/55">
+            PIN 4–6 digit. Bisa diketik lewat keyboard, Enter untuk masuk.
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function KioskMenu({
   isDark,
   soundOn,
   onToggleSound,
   onToggleTheme,
   onReset,
+  onSwitchOfficer,
   onExit,
   onCloseBrowser,
   onShutdown,
@@ -2146,6 +2354,8 @@ function KioskMenu({
   onToggleTheme: () => void;
   /** Kosongkan statistik & riwayat tampilan kiosk. */
   onReset: () => void;
+  /** Buka keypad PIN untuk mengganti petugas yang bertugas di kiosk. */
+  onSwitchOfficer: () => void;
   onExit: () => void;
   onCloseBrowser: () => void;
   /** Hanya ada bila agen kiosk lokal terdeteksi. */
@@ -2250,6 +2460,15 @@ function KioskMenu({
           role="menu"
           className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-lg bg-white p-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-kiosk-asphalt dark:ring-kiosk-line"
         >
+          <MenuItem
+            icon={<UserRoundCheck className="h-4 w-4" />}
+            label="Ganti petugas"
+            onClick={() => {
+              setOpen(false);
+              onSwitchOfficer();
+            }}
+          />
+          <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
             icon={soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             label={soundOn ? "Suara feedback: Aktif" : "Suara feedback: Mati"}

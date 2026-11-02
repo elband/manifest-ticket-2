@@ -20,8 +20,9 @@ import {
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ensureSeed, getSession, setSession } from "@/lib/storage";
-import { login, loginWithPin } from "@/lib/auth";
-import { apiLogin, apiLoginPin, type ApiResult } from "@/lib/api/client";
+import { login } from "@/lib/auth";
+import { apiLogin } from "@/lib/api/client";
+import { serverLoginError, signInWithPin } from "@/lib/pinLogin";
 import { saveSettings } from "@/lib/settings";
 import type { UserRole } from "@/lib/types";
 
@@ -29,17 +30,6 @@ import type { UserRole } from "@/lib/types";
 // maupun menerima kredensial demo (sama dengan DEMO_USERS_ENABLED di mockData;
 // ditulis literal agar blok demo terbuang dari bundle).
 const SHOW_DEMO_ACCOUNTS = process.env.NODE_ENV !== "production";
-
-/** Pesan gagal login backend saat tidak ada fallback akun lokal (produksi). */
-function serverLoginError(res: ApiResult<unknown>, mode: "pin" | "password"): string {
-  if (!res.status) {
-    return "Server SIPANDAI tidak dapat dihubungi. Periksa jaringan, lalu coba lagi.";
-  }
-  if (res.status === 401) {
-    return mode === "pin" ? "PIN tidak valid." : "Email atau password salah.";
-  }
-  return res.error ?? "Login gagal.";
-}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -114,52 +104,14 @@ export default function LoginPage() {
       return;
     }
 
-    // PIN petugas: coba backend dulu (auto-connect + aktifkan sync), lalu
-    // fallback ke PIN lokal kalau backend mati/offline (akun demo, dev saja).
-    try {
-      const api = await apiLoginPin(pin);
-      if (api.ok && api.data) {
-        const u = api.data.user;
-        const role: UserRole =
-          u.role === "admin"
-            ? "admin"
-            : u.role === "supervisor"
-              ? "supervisor"
-              : "security";
-        setSession({ id: u.id, email: u.email, name: u.name, role });
-        saveSettings({ apiSyncEnabled: true }); // scan langsung ter-push ke station petugas
-        setLoading(false);
-        router.replace(role === "security" ? "/scan/kiosk" : "/dashboard");
-        return;
-      }
-
-      if (!SHOW_DEMO_ACCOUNTS) {
-        setLoading(false);
-        setError(serverLoginError(api, "pin"));
-        return;
-      }
-
-      // Fallback offline / PIN hanya ada lokal.
-      const local = loginWithPin(pin);
-      setLoading(false);
-      if (!local.ok) {
-        setError(local.error);
-        return;
-      }
-      router.replace(
-        local.user.role === "security" ? "/scan/kiosk" : "/dashboard",
-      );
-    } catch {
-      const local = loginWithPin(pin);
-      setLoading(false);
-      if (!local.ok) {
-        setError(local.error);
-        return;
-      }
-      router.replace(
-        local.user.role === "security" ? "/scan/kiosk" : "/dashboard",
-      );
+    // PIN petugas: backend dulu, fallback PIN lokal (dev) — lihat signInWithPin.
+    const res = await signInWithPin(pin);
+    setLoading(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    router.replace(res.user.role === "security" ? "/scan/kiosk" : "/dashboard");
   };
 
   const quick = (e: string, pw = "password") => {
