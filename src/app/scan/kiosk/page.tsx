@@ -4,6 +4,11 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ScanLine,
+  Scan,
+  Usb,
+  Keyboard,
+  Smartphone,
+  Ticket,
   X,
   CheckCircle2,
   XCircle,
@@ -12,15 +17,10 @@ import {
   User,
   Armchair,
   Clock,
-  Usb,
-  Keyboard,
   ShieldCheck,
   Sun,
   Moon,
   ArrowRight,
-  Scan,
-  Smartphone,
-  Ticket,
   Volume2,
   VolumeX,
   RotateCcw,
@@ -38,7 +38,6 @@ import {
   Minimize2,
   Maximize,
   Minimize,
-  BarChart3,
 } from "lucide-react";
 import { useCountUp } from "@/lib/useCountUp";
 import {
@@ -1146,62 +1145,36 @@ export default function KioskPage() {
 
   // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
   if (!mounted) {
-    return <div className="h-screen bg-[#eef3fb] dark:bg-[#0a1226]" />;
+    return <div className="h-screen bg-kiosk-concrete dark:bg-kiosk-concrete-dark" />;
   }
 
   return (
     <div
       className={cn(
-        "relative flex h-screen flex-col overflow-clip transition-colors",
-        "bg-[#eef3fb] text-slate-800",
-        "dark:bg-[#0a1226] dark:text-white",
+        "relative flex h-screen flex-col overflow-clip font-sign transition-colors",
+        "bg-kiosk-concrete text-kiosk-asphalt",
+        "dark:bg-kiosk-concrete-dark dark:text-white",
       )}
     >
-      {/* Background grid + glow (dark only) */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 hidden opacity-[0.18] dark:block"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, rgba(56,189,248,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(56,189,248,0.18) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
-          maskImage:
-            "radial-gradient(ellipse at center, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 80%)",
-        }}
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -left-40 top-1/4 h-[420px] w-[420px] rounded-full bg-cyan-400/20 blur-3xl dark:bg-cyan-500/15"
-      />
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-32 top-1/2 h-[380px] w-[380px] rounded-full bg-blue-400/20 blur-3xl dark:bg-blue-600/15"
-      />
-
-      {/* Header */}
-      <header className="relative z-30 flex items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
-          <span className="relative inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-lg shadow-cyan-500/40 ring-1 ring-white/40">
-            <span className="pointer-events-none absolute -inset-1 rounded-2xl bg-cyan-400/30 blur-md" />
-            <ShieldCheck className="relative h-5 w-5" />
-            {/* dot online berkedip */}
-            <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 ring-2 ring-[#eef3fb] dark:ring-[#0a1226]">
-              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-            </span>
+      {/* Header = bidang rambu biru, teks putih. */}
+      <header className="relative z-30 flex shrink-0 items-center justify-between gap-4 bg-kiosk-sign px-4 py-2.5 text-white sm:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-white text-kiosk-sign">
+            <ShieldCheck className="h-7 w-7" strokeWidth={2.25} />
           </span>
-          <div>
-            <h1 className="text-[13px] font-black tracking-[0.18em]">
-              KIOSK MODE
-              <span className="mx-1.5 text-slate-400 dark:text-white/30">·</span>
-              <span className="text-cyan-600 dark:text-cyan-300">POS VALIDASI</span>
+          <div className="min-w-0 leading-none">
+            <h1 className="truncate text-[22px] font-bold tracking-tight">
+              Pemeriksaan boarding pass
             </h1>
-            <p className="text-[10.5px] tracking-wider text-slate-500 dark:text-white/55">
-              {session?.name ?? "—"} · {flightsToday} flight hari ini
+            <p className="mt-1 truncate text-[15px] font-medium text-white/75">
+              {session?.name ?? "—"}, {flightsToday} flight hari ini
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
+          <ScannerStatusPill mode={inputMode} />
+          <HeaderClock now={now} />
           {settings.apiSyncEnabled && (
             <ServerSyncChip
               onRelogin={() => {
@@ -1218,14 +1191,24 @@ export default function KioskPage() {
               onClick={onForceSync}
             />
           )}
+          {demoScanEnabled() && (
+            <button
+              type="button"
+              onClick={handleDemoScan}
+              disabled={demoLoading}
+              className="inline-flex h-11 items-center gap-2 rounded-md bg-white/15 px-3.5 text-[14px] font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Sparkles className="h-4 w-4" />
+              {demoLoading ? "Memproses…" : "Demo scan"}
+            </button>
+          )}
           <HardRefreshButton />
-          <ScannerStatusBadge mode={inputMode} />
-          <ClockChip now={now} />
           <KioskMenu
             isDark={isDark}
             soundOn={settings.soundOn}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
+            onReset={handleReset}
             onExit={exitKiosk}
             onCloseBrowser={() => setPowerConfirm("close")}
             onShutdown={
@@ -1259,41 +1242,30 @@ export default function KioskPage() {
         className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px opacity-0"
       />
 
-      {/* Main grid */}
-      <main className="relative z-10 grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 pb-6 pt-2 lg:overflow-visible lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:[grid-template-rows:minmax(0,1fr)]">
-        {/* Kiri (penumpang): status scan */}
-        <section className="flex flex-col gap-4 lg:min-h-0">
-          <ScanReadyCard
-            ktpFirst={settings.ktpScanFirst}
-            pendingName={pendingKtp?.name ?? null}
-          />
-          <ActionRow
-            onReset={handleReset}
-            onDemo={demoScanEnabled() ? handleDemoScan : undefined}
-            demoLoading={demoLoading}
-            showExempt={settings.ktpScanFirst && settings.allowNoKtpExemption}
-            exemptActive={exemptNext}
-            onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
-          />
-        </section>
-
-        {/* Kanan (petugas AVSEC): statistik shift + flight aktif */}
-        <section className="flex flex-col gap-4 lg:min-h-0">
-          <ShiftStatsCard scans={todayScans} now={now} />
-          <ActiveFlightCards
-            flights={todayFlights}
-            scans={todayScans}
-            now={now}
-            settings={settings}
-            highlightFlightId={last?.event.flightId ?? null}
-            onMore={() =>
-              router.push(session?.role === "security" ? "/scan" : "/scan-events")
-            }
-          />
-        </section>
+      {/* Aula: panel scanner boarding pass layar penuh (untuk penumpang). */}
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:overflow-visible">
+        <ScanReadyCard
+          ktpFirst={settings.ktpScanFirst}
+          pendingName={pendingKtp?.name ?? null}
+          showExempt={settings.ktpScanFirst && settings.allowNoKtpExemption}
+          exemptActive={exemptNext}
+          onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
+        />
       </main>
 
-      {/* Ticker info berjalan (bawah) — pengingat keamanan/instruksi, gaya kalem. */}
+      {/* Papan keberangkatan (flight boarding + statistik shift untuk AVSEC). */}
+      <DepartureBoard
+        flights={todayFlights}
+        scans={todayScans}
+        now={now}
+        settings={settings}
+        highlightFlightId={last?.event.flightId ?? null}
+        onMore={() =>
+          router.push(session?.role === "security" ? "/scan" : "/scan-events")
+        }
+      />
+
+      {/* Ticker info berjalan (bawah) — pengingat keamanan/instruksi. */}
       <KioskTicker />
 
       {/* Result Modal */}
@@ -1537,220 +1509,37 @@ const TICKER_ITEMS = [
   "Ikuti arahan petugas AVSEC di setiap titik pemeriksaan keamanan",
 ];
 
-/* ─────────────── Statistik shift (untuk petugas AVSEC) ─────────────── */
-
-function ShiftStatsCard({ scans, now }: { scans: ScanEvent[]; now: Date }) {
-  const stats = React.useMemo(() => {
-    let valid = 0;
-    let duplicate = 0;
-    let rejected = 0;
-    let lastHour = 0;
-    const hourly = new Array<number>(24).fill(0);
-    const nowMs = now.getTime();
-    const localDay = now.toDateString();
-    let firstHour = 24;
-    for (const e of scans) {
-      if (e.resultStatus === "VALID_FLIGHT") valid++;
-      else if (e.resultStatus === "DUPLICATE_SCAN") duplicate++;
-      else rejected++;
-      const d = new Date(e.scannedAt);
-      if (nowMs - d.getTime() <= 3_600_000) lastHour++;
-      // Grafik per jam hanya untuk hari lokal yang sama (todayScans difilter
-      // berdasarkan tanggal UTC).
-      if (d.toDateString() === localDay) {
-        const h = d.getHours();
-        hourly[h]++;
-        if (h < firstHour) firstHour = h;
-      }
-    }
-    const curHour = now.getHours();
-    const start = Math.max(0, Math.min(firstHour, curHour - 5));
-    const bars: { hour: number; n: number }[] = [];
-    for (let h = start; h <= curHour; h++) bars.push({ hour: h, n: hourly[h] });
-    const max = Math.max(1, ...bars.map((b) => b.n));
-    return { valid, duplicate, rejected, total: scans.length, lastHour, bars, max };
-  }, [scans, now]);
-
-  const hasData = stats.bars.some((b) => b.n > 0);
-  const curHour = now.getHours();
-
-  return (
-    <div className="shrink-0 rounded-3xl bg-white/80 px-5 py-4 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-white/50">
-          <BarChart3 className="h-3.5 w-3.5" />
-          Statistik Shift Hari Ini
-        </span>
-        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-slate-600 dark:bg-white/5 dark:text-white/65">
-          <b className="font-black text-slate-800 dark:text-white">{stats.lastHour}</b> scan / jam terakhir
-        </span>
-      </div>
-
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatTile
-          label="Valid"
-          value={stats.valid}
-          icon={<CheckCircle2 className="h-3.5 w-3.5" />}
-          dot="text-emerald-500"
-        />
-        <StatTile
-          label="Duplikat"
-          value={stats.duplicate}
-          icon={<AlertTriangle className="h-3.5 w-3.5" />}
-          dot="text-amber-500"
-        />
-        <StatTile
-          label="Ditolak"
-          value={stats.rejected}
-          icon={<XCircle className="h-3.5 w-3.5" />}
-          dot="text-rose-500"
-        />
-        <StatTile
-          label="Total"
-          value={stats.total}
-          icon={<ScanLine className="h-3.5 w-3.5" />}
-          dot="text-cyan-500"
-        />
-      </div>
-
-      {/* Grafik batang: jumlah scan per jam (satu seri, satu hue) */}
-      <div className="mt-4">
-        <div className="relative flex h-20 items-end gap-1.5 border-b border-slate-200 dark:border-white/10">
-          {!hasData && (
-            <span className="absolute inset-0 flex items-center justify-center text-[11.5px] text-slate-400 dark:text-white/40">
-              Belum ada scan hari ini
-            </span>
-          )}
-          {stats.bars.map((b) => {
-            const isNow = b.hour === curHour;
-            const pct = (b.n / stats.max) * 100;
-            const hh = String(b.hour).padStart(2, "0");
-            return (
-              <div
-                key={b.hour}
-                className="group relative flex h-full flex-1 items-end justify-center"
-              >
-                {/* label nilai hanya untuk jam berjalan (label selektif) */}
-                {isNow && b.n > 0 && (
-                  <span
-                    className="absolute left-1/2 -translate-x-1/2 text-[10px] font-bold tabular-nums text-slate-600 dark:text-white/70"
-                    style={{ bottom: `calc(${pct}% + 2px)` }}
-                  >
-                    {b.n}
-                  </span>
-                )}
-                <div
-                  className={cn(
-                    "w-full max-w-[28px] rounded-t-[4px] transition-[height] duration-500",
-                    isNow ? "bg-cyan-500 dark:bg-cyan-400" : "bg-cyan-500/45 dark:bg-cyan-400/40",
-                    "group-hover:bg-cyan-600 dark:group-hover:bg-cyan-300",
-                  )}
-                  style={{ height: b.n > 0 ? `max(${pct}%, 4px)` : "0px" }}
-                />
-                {/* tooltip hover */}
-                <span className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-slate-900 px-2 py-1 text-[11px] font-semibold text-white shadow-lg group-hover:block dark:bg-white dark:text-slate-900">
-                  {hh}:00–{hh}:59 · {b.n} scan
-                </span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="mt-1 flex gap-1.5">
-          {stats.bars.map((b, i) => (
-            <span
-              key={b.hour}
-              className={cn(
-                "flex-1 text-center text-[10px] tabular-nums",
-                b.hour === curHour
-                  ? "font-bold text-slate-700 dark:text-white/80"
-                  : "text-slate-400 dark:text-white/40",
-              )}
-            >
-              {stats.bars.length <= 12 || i % 2 === 0 || b.hour === curHour
-                ? String(b.hour).padStart(2, "0")
-                : ""}
-            </span>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatTile({
-  label,
-  value,
-  icon,
-  dot,
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  dot: string;
-}) {
-  const shown = useCountUp(value);
-  return (
-    <div className="rounded-2xl bg-slate-50 px-3 py-2.5 ring-1 ring-slate-200/80 dark:bg-white/5 dark:ring-white/10">
-      <span className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-white/55">
-        <span className={dot}>{icon}</span>
-        {label}
-      </span>
-      <span className="mt-0.5 block text-2xl font-black tabular-nums text-slate-800 dark:text-white">
-        {shown}
-      </span>
-    </div>
-  );
-}
-
 /**
- * Running-text kalem untuk mengisi bawah layar kiosk: pengingat keamanan &
- * instruksi. Track digandakan 2x lalu digeser -50% (animate-marquee) supaya
- * loop mulus. Bukan "warning" merah berkedip — gaya brand yang tenang.
- * motion-reduce → diam (hormati prefers-reduced-motion).
+ * Running-text di dasar layar: pengingat keamanan & instruksi. Track digandakan
+ * 2x lalu digeser -50% (animate-marquee) supaya loop mulus. motion-reduce →
+ * diam (hormati prefers-reduced-motion).
  */
 function KioskTicker() {
   const Row = () => (
     <div className="flex shrink-0 items-center pr-2" aria-hidden>
       {TICKER_ITEMS.map((t, i) => (
         <span key={i} className="flex items-center whitespace-nowrap">
-          {/* pemisah diamond antar item */}
-          <span className="mx-5 inline-block h-1.5 w-1.5 rotate-45 rounded-[2px] bg-cyan-400/70" />
-          <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-600 dark:text-slate-200">
-            <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-cyan-500" />
-            {t}
-          </span>
+          {/* pemisah: belah ketupat biru */}
+          <span className="mx-6 inline-block h-2 w-2 rotate-45 bg-kiosk-sign-glow" />
+          <span className="text-[15px] font-medium text-white/85">{t}</span>
         </span>
       ))}
     </div>
   );
   return (
-    <footer className="relative z-20 shrink-0 overflow-hidden border-t border-slate-200/70 bg-gradient-to-r from-slate-50 via-white to-slate-50 dark:border-white/10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      {/* garis aksen gradient beranimasi di atas */}
-      <div className="h-0.5 w-full animate-gradient-shift bg-[length:200%_100%] bg-[linear-gradient(90deg,#06b6d4,#3b82f6,#22d3ee,#06b6d4)]" />
-      <div className="flex items-stretch">
-        {/* Label tetap di kiri — chip gradient + dot live + glow */}
-        <div className="relative z-10 flex shrink-0 items-center gap-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 py-2.5 pl-4 pr-5 text-white shadow-[0_0_24px_rgba(6,182,212,0.35)]">
-          <span className="relative flex h-2 w-2 items-center justify-center">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/80" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
-          </span>
-          <Megaphone className="h-4 w-4" />
-          <span className="text-[11px] font-extrabold uppercase tracking-[0.15em]">
-            Info Bandara
-          </span>
-          {/* ekor miring biar nyambung mulus ke track */}
-          <span className="pointer-events-none absolute -right-3 top-0 h-full w-3 skew-x-[-12deg] bg-blue-600" />
+    <footer className="relative z-20 flex shrink-0 items-stretch overflow-hidden border-t border-kiosk-line bg-kiosk-asphalt">
+      <div className="relative z-10 flex shrink-0 items-center gap-2 bg-kiosk-sign px-4 text-white">
+        <Megaphone className="h-4 w-4" />
+        <span className="text-[14px] font-bold">Info bandara</span>
+      </div>
+      <div className="relative flex-1 overflow-hidden py-2.5">
+        <p className="sr-only">{TICKER_ITEMS.join(". ")}</p>
+        <div className="flex w-max animate-marquee motion-reduce:animate-none">
+          <Row />
+          <Row />
         </div>
-        {/* Marquee */}
-        <div className="relative flex-1 overflow-hidden py-2.5">
-          <div className="flex w-max animate-marquee motion-reduce:animate-none">
-            <Row />
-            <Row />
-          </div>
-          {/* fade tepi kiri/kanan biar teks muncul/hilang halus */}
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-12 bg-gradient-to-r from-white to-transparent dark:from-slate-900" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-slate-50 to-transparent dark:from-slate-950" />
-        </div>
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-kiosk-asphalt to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-kiosk-asphalt to-transparent" />
       </div>
     </footer>
   );
@@ -1758,12 +1547,22 @@ function KioskTicker() {
 
 /* ─────────────── Scan ready card with audio waveform ─────────────── */
 
+/**
+ * Panel scanner layar penuh untuk penumpang: gelombang suara, ikon dalam
+ * bingkai bidik dengan cincin berputar, lalu instruksi scan.
+ */
 function ScanReadyCard({
   ktpFirst = false,
   pendingName = null,
+  showExempt = false,
+  exemptActive = false,
+  onToggleExempt,
 }: {
   ktpFirst?: boolean;
   pendingName?: string | null;
+  showExempt?: boolean;
+  exemptActive?: boolean;
+  onToggleExempt?: () => void;
 }) {
   // 3 keadaan: (a) KTP-first menunggu KTP, (b) KTP terbaca menunggu boarding pass,
   // (c) normal menunggu boarding pass.
@@ -1771,11 +1570,11 @@ function ScanReadyCard({
   const waitingKtp = ktpFirst && !pendingName;
 
   const icon = identityReady ? (
-    <CheckCircle2 className="h-11 w-11" />
+    <CheckCircle2 className="h-11 w-11 tall:h-14 tall:w-14" />
   ) : waitingKtp ? (
-    <IdCard className="h-11 w-11" />
+    <IdCard className="h-11 w-11 tall:h-14 tall:w-14" />
   ) : (
-    <Scan className="h-11 w-11" />
+    <Scan className="h-11 w-11 tall:h-14 tall:w-14" />
   );
   const chip = identityReady
     ? "from-emerald-400 to-teal-600 shadow-emerald-500/40"
@@ -1792,14 +1591,14 @@ function ScanReadyCard({
       : "Arahkan scanner USB ke boarding pass untuk memulai validasi.";
 
   return (
-    <div className="relative flex min-h-[260px] flex-1 flex-col justify-center overflow-hidden rounded-3xl bg-white/80 px-6 py-7 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
+    <div className="relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-xl bg-kiosk-paper px-6 py-6 tall:py-8 shadow-[0_30px_60px_-30px_rgba(30,34,40,0.45)] dark:bg-kiosk-asphalt">
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-cyan-50/40 via-transparent to-blue-50/40 dark:from-cyan-500/5 dark:to-blue-500/5"
+        className="absolute inset-0 bg-gradient-to-br from-cyan-50/50 via-transparent to-blue-50/50 dark:from-cyan-500/5 dark:to-blue-500/5"
       />
       {/* Cincin konsentris samar di belakang ikon */}
       <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-        {[560, 420, 290].map((d) => (
+        {[760, 580, 400].map((d) => (
           <span
             key={d}
             className="absolute rounded-full border border-cyan-400/15 dark:border-cyan-300/10"
@@ -1808,31 +1607,31 @@ function ScanReadyCard({
         ))}
       </div>
 
-      <div className="relative flex flex-col items-center gap-6">
+      <div className="relative flex flex-col items-center gap-5 tall:gap-7">
         <Waveform />
 
         {/* Ikon + bingkai bidik + cincin putus-putus berputar */}
-        <div className="relative flex h-44 w-44 items-center justify-center">
+        <div className="relative flex h-44 w-44 items-center tall:h-56 tall:w-56 justify-center">
           <span
             aria-hidden
-            className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400/40 animate-spin-slow dark:border-cyan-300/30"
+            className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400/40 animate-spin-slow motion-reduce:animate-none dark:border-cyan-300/30"
           />
           <span
             aria-hidden
             className={cn(
-              "absolute inset-5 rounded-full animate-ripple",
+              "absolute inset-5 rounded-full animate-ripple tall:inset-6 motion-reduce:animate-none",
               identityReady ? "bg-emerald-300/30" : "bg-cyan-300/30",
             )}
           />
-          <span aria-hidden className="absolute inset-7">
-            <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg border-l-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
-            <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg border-r-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
-            <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg border-b-[3px] border-l-[3px] border-cyan-500 dark:border-cyan-300" />
-            <span className="absolute bottom-0 right-0 h-5 w-5 rounded-br-lg border-b-[3px] border-r-[3px] border-cyan-500 dark:border-cyan-300" />
+          <span aria-hidden className="absolute inset-7 tall:inset-8">
+            <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg tall:h-6 tall:w-6 border-l-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg tall:h-6 tall:w-6 border-r-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg tall:h-6 tall:w-6 border-b-[3px] border-l-[3px] border-cyan-500 dark:border-cyan-300" />
+            <span className="absolute bottom-0 right-0 h-5 w-5 rounded-br-lg tall:h-6 tall:w-6 border-b-[3px] border-r-[3px] border-cyan-500 dark:border-cyan-300" />
           </span>
           <span
             className={cn(
-              "relative flex h-24 w-24 items-center justify-center rounded-3xl bg-gradient-to-br text-white shadow-2xl ring-4 ring-white/70 dark:ring-white/10",
+              "relative flex h-24 w-24 items-center tall:h-28 tall:w-28 justify-center rounded-3xl bg-gradient-to-br text-white shadow-2xl ring-4 ring-white/70 dark:ring-white/10",
               chip,
             )}
           >
@@ -1842,28 +1641,46 @@ function ScanReadyCard({
 
         <div className="text-center">
           {identityReady && (
-            <p className="mb-1 text-[11px] font-black uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
+            <p className="mb-1 text-[13px] font-bold uppercase tracking-[0.2em] text-emerald-600 dark:text-emerald-300">
               Identitas KTP
             </p>
           )}
-          <p className="text-3xl font-black tracking-tight 2xl:text-4xl">{title}</p>
-          <p className="mx-auto mt-2 max-w-md text-[14px] leading-snug text-slate-500 dark:text-white/55">
+          <p className="font-board text-4xl font-bold tracking-tight tall:text-5xl 2xl:text-6xl">{title}</p>
+          <p className="mx-auto mt-2 max-w-xl text-[17px] leading-snug text-slate-500 dark:text-white/55">
             {subtitle}
           </p>
         </div>
 
         {/* Sumber boarding pass yang bisa dipindai */}
         {!waitingKtp && (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-[12px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
-              <Smartphone className="h-3.5 w-3.5" />
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-4 py-2 text-[14px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
+              <Smartphone className="h-4 w-4" />
               Layar HP
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-[12px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
-              <Ticket className="h-3.5 w-3.5" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-4 py-2 text-[14px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
+              <Ticket className="h-4 w-4" />
               Kertas boarding pass
             </span>
           </div>
+        )}
+
+        {showExempt && (
+          <button
+            type="button"
+            onClick={onToggleExempt}
+            aria-pressed={exemptActive}
+            title="Penumpang tanpa KTP — scan berikutnya dilewati pencocokan KTP & dicatat"
+            className={cn(
+              "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-[13px] font-bold uppercase tracking-wider ring-1 transition",
+              exemptActive
+                ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30 ring-amber-300 animate-pulse"
+                : "bg-amber-500/10 text-amber-700 ring-amber-300/50 hover:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/20",
+            )}
+          >
+            <UserX className="h-4 w-4" />
+            {exemptActive ? "Tanpa KTP AKTIF — scan boarding pass" : "Tanpa KTP"}
+          </button>
         )}
       </div>
     </div>
@@ -1871,10 +1688,10 @@ function ScanReadyCard({
 }
 
 function Waveform() {
-  // 48 batang vertikal, tinggi deterministik, animasi via delay CSS
+  // 56 batang vertikal, tinggi deterministik, animasi via delay CSS
   const bars = React.useMemo(
     () =>
-      Array.from({ length: 48 }, (_, i) => {
+      Array.from({ length: 56 }, (_, i) => {
         const seed = Math.sin(i * 1.7) * 0.5 + 0.5;
         const h = 30 + Math.round(seed * 70);
         const delay = (i % 10) * 80;
@@ -1883,11 +1700,11 @@ function Waveform() {
     [],
   );
   return (
-    <div className="flex h-20 items-center gap-1.5">
+    <div className="flex h-16 items-center gap-1.5 tall:h-24">
       {bars.map((b, i) => (
         <span
           key={i}
-          className="block w-[3px] rounded-full bg-gradient-to-t from-cyan-500/70 to-cyan-300/90 animate-wave dark:from-cyan-500/70 dark:to-cyan-200"
+          className="block w-[3px] rounded-full bg-gradient-to-t from-cyan-500/70 to-cyan-300/90 animate-wave motion-reduce:animate-none dark:from-cyan-500/70 dark:to-cyan-200"
           style={{
             height: `${b.h}%`,
             animationDelay: `${b.delay}ms`,
@@ -1898,7 +1715,17 @@ function Waveform() {
   );
 }
 
-/* ─────────────── Active flight cards ─────────────── */
+/** Status input scanner di header (bidang biru). */
+const INPUT_MODE_META: Record<
+  "idle" | "scanner" | "manual",
+  { label: string; dot: string; icon: typeof Usb }
+> = {
+  idle: { label: "Menunggu input", dot: "bg-white/60", icon: ScanLine },
+  scanner: { label: "Scanner USB", dot: "bg-emerald-400", icon: Usb },
+  manual: { label: "Input manual", dot: "bg-amber-400", icon: Keyboard },
+};
+
+/* ─────────────── Papan keberangkatan: flight boarding + statistik shift ─────────────── */
 
 interface FlightCardData {
   flight: Flight;
@@ -1907,7 +1734,10 @@ interface FlightCardData {
   lastScanAt: number;
 }
 
-function ActiveFlightCards({
+const BOARD_PAGE_MS = 8000;
+const BOARD_CELL_STRIDE = 236; // lebar sel (224) + gap (12)
+
+function DepartureBoard({
   flights,
   scans,
   now,
@@ -1947,9 +1777,6 @@ function ActiveFlightCards({
         const lastAt = fScans[0]
           ? new Date(fScans[0].scannedAt).getTime()
           : 0;
-        // Tampilkan badge "OPEN" untuk semua yang lolos filter — kalau
-        // stored OPEN/ACTIVE tapi effective lain (CLOSED), tetap OPEN biar
-        // konsisten dengan list /flights.
         const displayStatus: "OPEN" | "ACTIVE" =
           flight.status === "ACTIVE" || eff.status === "ACTIVE"
             ? "ACTIVE"
@@ -1972,82 +1799,91 @@ function ActiveFlightCards({
       });
   }, [flights, scans, now, settings]);
 
-  // Opsi A: tampilkan HANYA sebanyak baris yang muat rapi di ruang tersedia
-  // (tanpa scroll berdempet). Sisanya via tombol "Lihat semua". Dihitung dari
-  // tinggi kontainer & tinggi 1 baris (~54px) × jumlah kolom (2 di layar lebar).
-  const gridRef = React.useRef<HTMLDivElement | null>(null);
-  const [maxVisible, setMaxVisible] = React.useState(999);
+  // Tampilkan sel sebanyak yang muat di lebar papan; sisanya bergiliran per
+  // halaman seperti papan keberangkatan bandara.
+  const rowRef = React.useRef<HTMLDivElement | null>(null);
+  const [perPage, setPerPage] = React.useState(4);
   React.useEffect(() => {
-    const el = gridRef.current;
+    const el = rowRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ROW_STRIDE = 54; // tinggi baris kompak + gap
-    const recompute = () => {
-      const cols = window.matchMedia("(min-width:1280px)").matches ? 2 : 1;
-      const rows = Math.max(1, Math.floor(el.clientHeight / ROW_STRIDE));
-      setMaxVisible(rows * cols);
-    };
+    const recompute = () =>
+      setPerPage(Math.max(1, Math.floor((el.clientWidth + 12) / BOARD_CELL_STRIDE)));
     recompute();
     const ro = new ResizeObserver(recompute);
     ro.observe(el);
-    window.addEventListener("resize", recompute);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", recompute);
-    };
+    return () => ro.disconnect();
   }, []);
 
-  const shown = cards.slice(0, maxVisible);
-  const remaining = cards.length - shown.length;
+  const pages = Math.max(1, Math.ceil(cards.length / perPage));
+  const [page, setPage] = React.useState(0);
+  React.useEffect(() => {
+    if (pages <= 1) return;
+    const t = setInterval(() => setPage((p) => (p + 1) % pages), BOARD_PAGE_MS);
+    return () => clearInterval(t);
+  }, [pages]);
+
+  // Flight yang barusan di-scan → lompat ke halamannya. `cards` dibaca lewat
+  // ref karena dihitung ulang tiap detik (now) dan tak boleh mereset giliran.
+  const cardsRef = React.useRef(cards);
+  cardsRef.current = cards;
+  React.useEffect(() => {
+    if (!highlightFlightId) return;
+    const i = cardsRef.current.findIndex((c) => c.flight.id === highlightFlightId);
+    if (i >= 0) setPage(Math.floor(i / perPage));
+  }, [highlightFlightId, perPage]);
+
+  const safePage = Math.min(page, pages - 1);
+  const shown = cards.slice(safePage * perPage, (safePage + 1) * perPage);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col rounded-3xl bg-white/80 ring-1 ring-slate-200 backdrop-blur-md dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-      <div className="flex items-center justify-between px-5 py-3">
-        <h3 className="text-[10.5px] font-black uppercase tracking-[0.16em] text-slate-500 dark:text-white/70">
-          Flight Aktif · Boarding
-        </h3>
-        <span className="rounded-full bg-slate-900/5 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-white/10 dark:text-white/70">
-          {cards.length}
-        </span>
-      </div>
-      <div
-        ref={gridRef}
-        className="grid min-h-0 flex-1 grid-cols-1 content-start gap-1.5 overflow-hidden px-3 pb-3 xl:grid-cols-2"
-      >
-        {cards.length === 0 && (
-          <div className="col-span-full px-3 py-8 text-center text-xs text-slate-400 dark:text-white/40">
-            Belum ada flight yang sedang boarding.
+    <section className="relative z-20 shrink-0 bg-kiosk-asphalt text-white">
+      <div className="flex items-stretch gap-4 px-4 py-3 sm:px-6">
+        <div className="flex w-[118px] shrink-0 flex-col justify-between gap-2 sm:w-[180px]">
+          <div className="leading-none">
+            <h2 className="font-board text-[22px] font-semibold text-kiosk-sign-glow sm:text-[26px]">
+              Sedang boarding
+            </h2>
+            <p className="mt-1 text-[14px] text-white/60">
+              Now boarding
+              {pages > 1 && (
+                <span className="tabular-nums">
+                  , {safePage + 1}/{pages}
+                </span>
+              )}
+            </p>
           </div>
-        )}
-        {shown.map((c) => (
-          <FlightBoardingCard
-            key={c.flight.id}
-            data={c}
-            highlight={highlightFlightId === c.flight.id}
-          />
-        ))}
+          <button
+            type="button"
+            onClick={onMore}
+            className="self-start text-[13px] font-semibold text-white/75 underline-offset-4 hover:text-white hover:underline"
+          >
+            Lihat semua scan
+          </button>
+        </div>
+
+        <div ref={rowRef} className="flex min-w-0 flex-1 items-stretch gap-3 overflow-hidden">
+          {cards.length === 0 ? (
+            <p className="flex items-center text-[15px] text-white/55">
+              Belum ada flight yang dibuka untuk boarding.
+            </p>
+          ) : (
+            shown.map((c) => (
+              <FlightBoardCell
+                key={c.flight.id}
+                data={c}
+                highlight={highlightFlightId === c.flight.id}
+              />
+            ))
+          )}
+        </div>
+
+        <ShiftStats scans={scans} now={now} />
       </div>
-      <button
-        type="button"
-        onClick={onMore}
-        className="group flex w-full items-center justify-center gap-1.5 border-t border-slate-200/70 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-cyan-700 transition hover:bg-cyan-50/50 dark:border-cyan-400/10 dark:text-cyan-300 dark:hover:bg-cyan-500/5"
-      >
-        {remaining > 0 ? (
-          <>
-            <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-cyan-700 dark:bg-cyan-500/20 dark:text-cyan-200">
-              +{remaining}
-            </span>
-            flight lainnya · Lihat semua
-          </>
-        ) : (
-          "Lihat semua scan hari ini"
-        )}
-        <ArrowRight className="h-3 w-3 transition group-hover:translate-x-0.5" />
-      </button>
-    </div>
+    </section>
   );
 }
 
-function FlightBoardingCard({
+function FlightBoardCell({
   data,
   highlight,
 }: {
@@ -2057,64 +1893,135 @@ function FlightBoardingCard({
   const { flight, effectiveStatus, boarded } = data;
   const expected = flight.expectedPax ?? null;
   const airlineName = getAirlineMeta(flight.airlineCode).name;
-
-  // Aksen status pada garis kiri kartu (tanpa teks — biar tetap ringkas).
-  const accent =
-    effectiveStatus === "ACTIVE"
-      ? "from-amber-400 to-orange-500"
-      : "from-emerald-400 to-teal-500";
+  const pct =
+    expected && expected > 0 ? Math.min(100, Math.round((boarded / expected) * 100)) : null;
+  const boarding = effectiveStatus === "ACTIVE";
 
   return (
     <div
-      title={`${flight.flightNumber} · ${airlineName} · ${flight.originAirport}→${flight.destinationAirport}`}
+      title={`${flight.flightNumber}, ${airlineName}, ${flight.originAirport} ke ${flight.destinationAirport}`}
       className={cn(
-        "relative flex items-center gap-2.5 overflow-hidden rounded-xl bg-white py-2 pl-3.5 pr-2.5 ring-1 ring-slate-200 transition dark:bg-[#0e1f44] dark:ring-cyan-400/15",
-        highlight &&
-          "ring-2 ring-cyan-400 shadow-[0_0_20px_-4px_rgba(34,211,238,0.45)] dark:ring-cyan-300",
+        "flex min-w-[224px] max-w-[320px] flex-1 basis-0 flex-col justify-between gap-2 rounded-[4px] bg-kiosk-cell px-3 py-2.5 ring-1 ring-kiosk-line",
+        highlight && "ring-2 ring-kiosk-sign-glow",
       )}
     >
-      {/* garis aksen status di kiri */}
-      <span
-        className={cn(
-          "absolute inset-y-0 left-0 w-1 bg-gradient-to-b",
-          accent,
-        )}
-      />
+      <div className="flex items-center gap-2">
+        <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />
+        <span className="truncate font-board text-[22px] font-semibold leading-none tabular-nums text-kiosk-sign-glow">
+          {flight.flightNumber}
+        </span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[12px] font-semibold text-white/75">
+          <span
+            className={cn("h-2 w-2 rounded-full", boarding ? "bg-kiosk-go" : "bg-white/50")}
+          />
+          {boarding ? "Boarding" : "Dibuka"}
+        </span>
+      </div>
 
-      {/* Maskapai (logo) */}
-      <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />
-
-      {/* Info penerbangan */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-[13px] font-black leading-tight tracking-tight tabular-nums text-slate-800 dark:text-white">
-            {flight.flightNumber}
-          </p>
-          <span className="flex shrink-0 items-center gap-0.5 text-[9.5px] font-bold tabular-nums text-slate-500 dark:text-white/60">
-            {flight.originAirport}
-            <ArrowRight className="h-2.5 w-2.5 text-cyan-500" />
+      <div className="flex items-end justify-between gap-2">
+        <div className="min-w-0 leading-none">
+          <span className="block font-board text-[30px] font-semibold leading-none tracking-wide">
             {flight.destinationAirport}
           </span>
+          <span className="mt-1 block truncate text-[12px] text-white/55">{airlineName}</span>
         </div>
-        <p className="truncate text-[9.5px] font-semibold text-slate-400 dark:text-white/45">
-          {airlineName}
-        </p>
+        <span className="shrink-0 font-board text-[22px] font-medium leading-none tabular-nums text-white/85">
+          {flight.departureTime}
+        </span>
       </div>
 
-      {/* PAX */}
-      <div className="shrink-0 rounded-lg bg-slate-900/5 px-2 py-1 text-right dark:bg-white/10">
-        <span className="text-[13px] font-black leading-none tabular-nums text-slate-800 dark:text-white">
-          {boarded}
-          {expected !== null && (
-            <span className="text-[10px] font-bold text-slate-400 dark:text-white/40">
-              /{expected}
-            </span>
+      <div className="flex items-center gap-2">
+        <div className="h-1 flex-1 overflow-hidden rounded-full bg-kiosk-line">
+          {pct !== null && (
+            <div
+              className={cn("h-full rounded-full", boarding ? "bg-kiosk-go" : "bg-white/60")}
+              style={{ width: `${pct}%` }}
+            />
           )}
-        </span>
-        <span className="ml-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">
-          pax
+        </div>
+        <span className="shrink-0 text-[12px] tabular-nums text-white/70">
+          <b className="font-semibold text-white">{boarded}</b>
+          {expected !== null && `/${expected}`} pax
         </span>
       </div>
+    </div>
+  );
+}
+
+/** Statistik shift ringkas untuk petugas AVSEC (sisi kanan papan). */
+function ShiftStats({ scans, now }: { scans: ScanEvent[]; now: Date }) {
+  const stats = React.useMemo(() => {
+    let valid = 0;
+    let duplicate = 0;
+    let rejected = 0;
+    let lastHour = 0;
+    const hourly = new Array<number>(24).fill(0);
+    const nowMs = now.getTime();
+    const localDay = now.toDateString();
+    for (const e of scans) {
+      if (e.resultStatus === "VALID_FLIGHT") valid++;
+      else if (e.resultStatus === "DUPLICATE_SCAN") duplicate++;
+      else rejected++;
+      const d = new Date(e.scannedAt);
+      if (nowMs - d.getTime() <= 3_600_000) lastHour++;
+      // Grafik per jam hanya untuk hari lokal yang sama (todayScans difilter
+      // berdasarkan tanggal UTC).
+      if (d.toDateString() === localDay) hourly[d.getHours()]++;
+    }
+    const curHour = now.getHours();
+    const bars: { hour: number; n: number }[] = [];
+    for (let h = Math.max(0, curHour - 11); h <= curHour; h++) {
+      bars.push({ hour: h, n: hourly[h] });
+    }
+    const max = Math.max(1, ...bars.map((b) => b.n));
+    return { valid, duplicate, rejected, total: scans.length, lastHour, bars, max, curHour };
+  }, [scans, now]);
+
+  return (
+    <div className="hidden shrink-0 items-stretch gap-5 border-l border-kiosk-line pl-5 lg:flex">
+      <StatFigure label="Valid" value={stats.valid} dot="bg-kiosk-go" />
+      <StatFigure label="Duplikat" value={stats.duplicate} dot="bg-kiosk-hold" />
+      <StatFigure label="Ditolak" value={stats.rejected} dot="bg-kiosk-stop" />
+      <div className="flex w-[140px] flex-col justify-between gap-2">
+        <div className="leading-tight">
+          <p className="text-[13px] text-white/65">
+            <b className="font-board text-[22px] font-semibold tabular-nums text-white">
+              {stats.lastHour}
+            </b>{" "}
+            scan/jam terakhir
+          </p>
+          <p className="text-[12px] tabular-nums text-white/50">{stats.total} scan hari ini</p>
+        </div>
+        {/* scan per jam, 12 jam terakhir; jam berjalan berwarna kuning */}
+        <div
+          className="flex h-9 items-end gap-[3px]"
+          title="Scan per jam, 12 jam terakhir"
+        >
+          {stats.bars.map((b) => (
+            <span
+              key={b.hour}
+              className={cn(
+                "flex-1 rounded-t-[2px]",
+                b.hour === stats.curHour ? "bg-kiosk-sign-glow" : "bg-white/30",
+              )}
+              style={{ height: b.n > 0 ? `max(${(b.n / stats.max) * 100}%, 3px)` : "1px" }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatFigure({ label, value, dot }: { label: string; value: number; dot: string }) {
+  const shown = useCountUp(value);
+  return (
+    <div className="flex flex-col justify-center leading-none">
+      <span className="font-board text-[40px] font-semibold tabular-nums">{shown}</span>
+      <span className="mt-1 flex items-center gap-1.5 text-[13px] text-white/65">
+        <span className={cn("h-2 w-2 rounded-[2px]", dot)} />
+        {label}
+      </span>
     </div>
   );
 }
@@ -2142,6 +2049,39 @@ async function serverReachable(timeoutMs = 4000): Promise<boolean> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+function ScannerStatusPill({ mode }: { mode: "idle" | "scanner" | "manual" }) {
+  const cfg = INPUT_MODE_META[mode];
+  const Icon = cfg.icon;
+  return (
+    <div className="hidden h-11 items-center gap-2 rounded-md bg-white/15 px-3.5 text-[14px] font-semibold lg:flex">
+      <Icon className="h-4 w-4" />
+      <span className={cn("h-2 w-2 rounded-full", cfg.dot)} />
+      {cfg.label}
+    </div>
+  );
+}
+
+function HeaderClock({ now }: { now: Date }) {
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  const dateStr = now.toLocaleDateString("id-ID", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+  return (
+    <div className="hidden px-2 text-right leading-none md:block">
+      <div className="font-board text-[28px] font-semibold tabular-nums">
+        {hh}:{mm}
+        <span className="ml-1 text-[16px] font-medium text-white/70">{ss} WIB</span>
+      </div>
+      <div className="mt-1 text-[13px] text-white/75">{dateStr}</div>
+    </div>
+  );
 }
 
 function HardRefreshButton() {
@@ -2180,118 +2120,11 @@ function HardRefreshButton() {
       onClick={() => void run()}
       disabled={busy}
       title="Hard refresh — bersihkan cache & muat ulang halaman"
-      className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 text-left shadow-sm backdrop-blur transition hover:bg-white disabled:opacity-70 dark:border-white/10 dark:bg-white/10 dark:hover:bg-white/15"
+      aria-label={busy ? "Memuat ulang…" : "Hard refresh"}
+      className="inline-flex h-11 w-11 items-center justify-center rounded-md bg-white/15 text-white transition hover:bg-white/25 disabled:opacity-70"
     >
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-md">
-        <RefreshCw className={cn("h-4 w-4", busy && "animate-spin")} />
-      </span>
-      <span className="leading-none">
-        <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/50">
-          Browser
-        </span>
-        <span className="mt-1 block text-[13px] font-extrabold text-slate-700 dark:text-white/85">
-          {busy ? "Memuat ulang…" : "Hard Refresh"}
-        </span>
-      </span>
+      <RefreshCw className={cn("h-5 w-5", busy && "animate-spin")} />
     </button>
-  );
-}
-
-function ScannerStatusBadge({ mode }: { mode: "idle" | "scanner" | "manual" }) {
-  const cfg = {
-    scanner: {
-      icon: Usb,
-      label: "Scanner USB",
-      chip: "from-emerald-400 to-emerald-600 shadow-emerald-500/30",
-      dot: "bg-emerald-500",
-      text: "text-emerald-600 dark:text-emerald-300",
-    },
-    manual: {
-      icon: Keyboard,
-      label: "Input Manual",
-      chip: "from-amber-400 to-amber-500 shadow-amber-500/30",
-      dot: "bg-amber-500",
-      text: "text-amber-600 dark:text-amber-300",
-    },
-    idle: {
-      icon: ScanLine,
-      label: "Menunggu Input",
-      chip: "from-slate-400 to-slate-500 shadow-slate-500/20",
-      dot: "bg-slate-400",
-      text: "text-slate-600 dark:text-white/70",
-    },
-  }[mode];
-  const Icon = cfg.icon;
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10">
-      <span
-        className={cn(
-          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md",
-          cfg.chip,
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="leading-none">
-        <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/50">
-          Mode Input
-        </div>
-        <div className={cn("mt-1 flex items-center gap-1.5 text-[13px] font-extrabold", cfg.text)}>
-          <span className="relative flex h-1.5 w-1.5">
-            <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-70", cfg.dot)} />
-            <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", cfg.dot)} />
-          </span>
-          {cfg.label}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ClockChip({ now }: { now: Date }) {
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mm = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-  const dateStr = now.toLocaleDateString("id-ID", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  return (
-    <div className="flex items-center gap-2.5 rounded-2xl border border-slate-200/80 bg-white/80 px-3 py-1.5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/10">
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 text-white shadow-md shadow-cyan-500/30">
-        <Clock className="h-4 w-4" />
-      </span>
-      <div className="leading-none">
-        <div className="flex items-baseline gap-1 font-mono tabular-nums">
-          {/* suppressHydrationWarning: jam berbasis waktu → wajar beda server/client */}
-          <span
-            suppressHydrationWarning
-            className="text-xl font-black tracking-tight text-slate-800 dark:text-white"
-          >
-            {hh}
-            <span className="mx-px animate-pulse text-cyan-500 dark:text-cyan-300">:</span>
-            {mm}
-          </span>
-          <span
-            suppressHydrationWarning
-            className="rounded-md bg-cyan-500/10 px-1 py-0.5 text-[11px] font-bold text-cyan-600 dark:bg-cyan-400/15 dark:text-cyan-300"
-          >
-            {ss}
-          </span>
-          <span className="ml-0.5 text-[9px] font-bold tracking-wide text-slate-400 dark:text-white/50">
-            WIB
-          </span>
-        </div>
-        <div
-          suppressHydrationWarning
-          className="mt-1 text-[9.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-white/50"
-        >
-          {dateStr}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -2300,6 +2133,7 @@ function KioskMenu({
   soundOn,
   onToggleSound,
   onToggleTheme,
+  onReset,
   onExit,
   onCloseBrowser,
   onShutdown,
@@ -2310,6 +2144,8 @@ function KioskMenu({
   soundOn: boolean;
   onToggleSound: () => void;
   onToggleTheme: () => void;
+  /** Kosongkan statistik & riwayat tampilan kiosk. */
+  onReset: () => void;
   onExit: () => void;
   onCloseBrowser: () => void;
   /** Hanya ada bila agen kiosk lokal terdeteksi. */
@@ -2400,10 +2236,10 @@ function KioskMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         className={cn(
-          "inline-flex h-11 w-11 items-center justify-center rounded-2xl border shadow-sm backdrop-blur transition",
+          "inline-flex h-11 w-11 items-center justify-center rounded-md transition",
           open
-            ? "border-cyan-300 bg-cyan-500/10 text-cyan-600 dark:border-cyan-400/30 dark:bg-cyan-400/15 dark:text-cyan-300"
-            : "border-slate-200/80 bg-white/80 text-slate-500 hover:bg-white hover:text-slate-700 dark:border-white/10 dark:bg-white/10 dark:text-white/70 dark:hover:bg-white/15",
+            ? "bg-white text-kiosk-asphalt"
+            : "bg-white/15 text-white hover:bg-white/25",
         )}
       >
         <Settings className={cn("h-5 w-5 transition-transform", open && "rotate-45")} />
@@ -2412,7 +2248,7 @@ function KioskMenu({
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-30 mt-2 w-52 overflow-hidden rounded-2xl bg-white p-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-[#0c1a36] dark:ring-cyan-400/20"
+          className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-lg bg-white p-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-kiosk-asphalt dark:ring-kiosk-line"
         >
           <MenuItem
             icon={soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
@@ -2443,6 +2279,14 @@ function KioskMenu({
               }}
             />
           )}
+          <MenuItem
+            icon={<RotateCcw className="h-4 w-4" />}
+            label="Reset statistik tampilan"
+            onClick={() => {
+              setOpen(false);
+              onReset();
+            }}
+          />
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
           <MenuItem
             icon={<X className="h-4 w-4" />}
@@ -2683,72 +2527,6 @@ function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
       {icon}
       <span className="tabular-nums">{label}</span>
     </button>
-  );
-}
-
-function ActionRow({
-  onReset,
-  onDemo,
-  demoLoading,
-  showExempt,
-  exemptActive,
-  onToggleExempt,
-}: {
-  onReset: () => void;
-  /** Tanpa handler (build produksi) → tombol Demo Scan disembunyikan. */
-  onDemo?: () => void;
-  demoLoading: boolean;
-  showExempt?: boolean;
-  exemptActive?: boolean;
-  onToggleExempt?: () => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      {showExempt && (
-        <button
-          type="button"
-          onClick={onToggleExempt}
-          aria-pressed={exemptActive}
-          title="Penumpang tanpa KTP — scan berikutnya dilewati pencocokan KTP & dicatat"
-          className={cn(
-            "inline-flex items-center justify-center gap-2 rounded-2xl px-3 py-2.5 text-[11px] font-bold uppercase tracking-wider ring-1 transition",
-            exemptActive
-              ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30 ring-amber-300 animate-pulse"
-              : "bg-amber-500/10 text-amber-700 ring-amber-300/50 hover:bg-amber-500/20 dark:text-amber-300 dark:ring-amber-400/20",
-          )}
-        >
-          <UserX className="h-4 w-4" />
-          {exemptActive
-            ? "Tanpa KTP AKTIF — scan boarding pass"
-            : "Tanpa KTP"}
-        </button>
-      )}
-      <div className="flex items-center gap-2 rounded-2xl bg-white/70 px-3 py-2 ring-1 ring-slate-200 backdrop-blur dark:bg-[#0c1a36] dark:ring-cyan-400/15">
-        {onDemo && (
-          <button
-            type="button"
-            onClick={onDemo}
-            disabled={demoLoading}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-white shadow-md shadow-cyan-500/20 transition hover:shadow-cyan-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {demoLoading ? "Memproses…" : "Demo Scan"}
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onReset}
-          className={cn(
-            "inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-900/5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:ring-white/15 dark:hover:bg-white/15",
-            !onDemo && "flex-1",
-          )}
-          title="Reset stats & tampilan"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Reset
-        </button>
-      </div>
-    </div>
   );
 }
 

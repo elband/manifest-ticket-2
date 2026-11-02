@@ -9,10 +9,32 @@ const config: Config = {
   darkMode: ["class", '[data-theme="dark"]'],
   theme: {
     extend: {
+      screens: {
+        // Layar kiosk yang cukup tinggi (mis. 1080p) → panel scanner diperbesar.
+        tall: { raw: "(min-height: 960px)" },
+      },
       fontFamily: {
         sans: ["Poppins", "ui-sans-serif", "system-ui", "sans-serif"],
+        // Kiosk: keluarga Barlow (terinspirasi rambu jalan) — bahasa rambu bandara.
+        sign: ["Barlow", "Poppins", "ui-sans-serif", "system-ui", "sans-serif"],
+        board: ['"Barlow Condensed"', "Barlow", "ui-sans-serif", "sans-serif"],
       },
       colors: {
+        // Kiosk: biru brand (bidang rambu, teks putih) + biru muda untuk aksen
+        // di atas papan arang, dengan aula beton sebagai latar.
+        kiosk: {
+          sign: "#2563EB",
+          "sign-glow": "#38BDF8",
+          asphalt: "#1E2228",
+          cell: "#2B3038",
+          line: "#3A404A",
+          concrete: "#D6DAE0",
+          "concrete-dark": "#2A2F37",
+          paper: "#FFFFFF",
+          go: "#1F9D55",
+          hold: "#F08C00",
+          stop: "#D93F3F",
+        },
         brand: {
           50: "#eff6ff",
           100: "#dbeafe",
@@ -226,8 +248,7 @@ const config: Config = {
         "avatar-float": "avatar-float 4s ease-in-out infinite",
         "glow-breath": "glow-breath 3.2s ease-in-out infinite",
         "dot-pulse": "dot-pulse 2.2s ease-in-out infinite",
-        marquee: "marquee 38s linear infinite",
-      },
+        marquee: "marquee 38s linear infinite",      },
     },
   },
   plugins: [],
