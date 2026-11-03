@@ -15,8 +15,8 @@ async function bootstrap() {
   const config = app.get(ConfigService);
 
   // Di belakang Nginx semua request datang dari 127.0.0.1. Percayai X-Forwarded-For
-  // HANYA dari loopback agar req.ip = IP klien asli — ThrottlerGuard (F-02) menghitung
-  // per IP; tanpa ini seluruh kiosk berbagi satu kuota 120 req/menit.
+  // HANYA dari loopback agar req.ip = IP klien asli — dipakai UserThrottlerGuard
+  // (F-02) untuk request tanpa token (mis. login).
   app.set("trust proxy", "loopback");
 
   // F-03: di produksi, tolak boot bila konfigurasi tidak aman (gagal-cepat).

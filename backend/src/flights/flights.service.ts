@@ -201,9 +201,27 @@ export class FlightsService {
           flightNumber: f.flightNumber,
           std: { gte: dayStart, lte: dayEnd },
         },
-        select: { id: true },
+        select: {
+          id: true,
+          airlineCode: true,
+          origin: true,
+          destination: true,
+          status: true,
+          std: true,
+        },
       });
       if (existing) {
+        // Tiap perangkat menarik FIDS tiap 3 menit → mayoritas baris identik.
+        // Lewati UPDATE bila tak ada yang berubah (hemat tulis ke MySQL).
+        if (
+          existing.airlineCode === f.airlineCode &&
+          existing.origin === f.origin &&
+          existing.destination === f.destination &&
+          existing.status === f.status &&
+          existing.std.getTime() === std.getTime()
+        ) {
+          continue;
+        }
         await this.prisma.flight.update({
           where: { id: existing.id },
           data: {

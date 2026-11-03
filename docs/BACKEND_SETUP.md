@@ -17,7 +17,7 @@ Backend NestJS sudah **ter-install, ter-migrate, dan ter-seed** di folder [backe
 | Endpoint face-photos          | ✅ aktif   | Stream JPEG `/api/face-photos/:eventId` (auth-gated)                                |
 11| Manifest penumpang            | ✅ aktif   | Model `FlightPassenger`, di-upsert saat push scan VALID; `GET /flights/:id/passengers` + rebuild |
 | Swagger docs                  | ✅ aktif   | `http://localhost:3001/docs` (interaktif, klik "Try it out")                        |
-| Helmet + CORS + Throttler     | ✅ aktif   | Rate limit 120 req/menit, CORS ke `http://localhost:3000`                           |
+| Helmet + CORS + Throttler     | ✅ aktif   | Rate limit 300 req/menit per petugas (per IP bila tanpa token), CORS ke `http://localhost:3000`                         |
 | Build artifact                | ✅ siap    | `backend/dist/src/main.js` (`npm run start:prod`)                                   |
 
 ## Credential seed

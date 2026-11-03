@@ -5,8 +5,8 @@
  *
  * - Perubahan lokal (event `afvs:settings-local`) ditandai pending lalu
  *   didorong ke backend; offline / belum login → tetap pending sampai bisa.
- * - Perangkat menarik pengaturan saat mulai, tiap 30 detik, saat login,
- *   online, dan saat tab kembali aktif. Selama ada perubahan pending, push
+ * - Perangkat menarik pengaturan saat mulai, tiap 60 detik (hanya saat tab
+ *   terlihat), saat login, online, dan saat tab kembali aktif. Selama ada perubahan pending, push
  *   didahulukan supaya perubahan di perangkat ini tidak tertimpa.
  * - Konflik: last-write-wins (penyimpanan terakhir yang menang).
  * - Setelan khusus perangkat (kamera, apiSyncEnabled) tidak ikut — lihat
@@ -30,7 +30,7 @@ interface SyncMeta {
 }
 
 const META_KEY = "afvs.settings.sync";
-const POLL_MS = 30_000;
+const POLL_MS = 60_000;
 const PUSH_DEBOUNCE_MS = 800;
 
 function readMeta(): SyncMeta {
@@ -120,7 +120,10 @@ export function startSettingsSync(): () => void {
   };
 
   kick();
-  const interval = window.setInterval(kick, POLL_MS);
+  // Tab tersembunyi tak perlu polling — onVisible menarik ulang saat kembali.
+  const interval = window.setInterval(() => {
+    if (document.visibilityState === "visible") kick();
+  }, POLL_MS);
   window.addEventListener("afvs:settings-local", onLocalChange);
   window.addEventListener("afvs:api-auth", kick);
   window.addEventListener("online", kick);

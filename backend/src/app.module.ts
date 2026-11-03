@@ -1,9 +1,10 @@
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
-import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule } from "@nestjs/throttler";
 import { AppSettingsModule } from "./app-settings/app-settings.module";
 import { AuthModule } from "./auth/auth.module";
+import { UserThrottlerGuard } from "./common/user-throttler.guard";
 import { FacePhotosModule } from "./face-photos/face-photos.module";
 import { FlightsModule } from "./flights/flights.module";
 import { OperatorsModule } from "./operators/operators.module";
@@ -15,7 +16,9 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    // Dihitung per petugas (lihat UserThrottlerGuard) — bukan per IP, karena
+    // semua perangkat di Wi-Fi bandara tampil sebagai satu IP gateway.
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     PrismaModule,
     AuthModule,
     FlightsModule,
@@ -29,7 +32,7 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
   // diimpor tapi tak pernah dipasang → rate-limit tidak berlaku sama sekali).
   // F-06: RetentionService menjadwalkan pemusnahan foto wajah lama (PDP).
   providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: UserThrottlerGuard },
     RetentionService,
   ],
 })

@@ -10,17 +10,19 @@ import { JwtAuthGuard } from "./jwt-auth.guard";
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  // F-02: throttle ketat khusus endpoint login (anti brute-force) — 5/menit/IP.
+  // F-02: throttle khusus endpoint login (anti brute-force) — 20/menit/IP.
+  // Bukan 5: semua perangkat bandara ter-NAT ke satu IP, jadi kuota ini
+  // dipakai bersama saat pergantian shift.
   @Post("login")
   @HttpCode(200)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
   }
 
   @Post("login-pin")
   @HttpCode(200)
-  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   loginPin(@Body() dto: LoginPinDto) {
     return this.auth.loginPin(dto.pin);
   }

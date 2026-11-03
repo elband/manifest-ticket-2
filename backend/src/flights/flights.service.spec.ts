@@ -52,7 +52,11 @@ describe("FlightsService.bulkUpsert (snapshot FIDS)", () => {
   });
 
   it("cocok by (station, flightNumber, rentang tanggal) — bila ada → UPDATE baris sama (bukan baris baru)", async () => {
-    prisma.flight.findFirst.mockResolvedValueOnce({ id: "flt_existing" });
+    prisma.flight.findFirst.mockResolvedValueOnce({
+      ...flight(),
+      id: "flt_existing",
+      std: new Date("2026-06-25T08:00:00.000Z"),
+    });
     const res = await svc.bulkUpsert({
       flights: [flight({ std: "2026-06-25T08:47:00.000Z", status: "CLOSED" })],
     } as never);
@@ -72,5 +76,17 @@ describe("FlightsService.bulkUpsert (snapshot FIDS)", () => {
     expect(where.flightNumber).toBe("GA1");
     expect(where.std).toHaveProperty("gte");
     expect(where.std).toHaveProperty("lte");
+  });
+
+  it("baris sudah ada & identik → tidak di-UPDATE (sync berulang tiap 3 menit)", async () => {
+    prisma.flight.findFirst.mockResolvedValueOnce({
+      ...flight(),
+      id: "flt_existing",
+      std: new Date("2026-06-25T08:00:00.000Z"),
+    });
+    const res = await svc.bulkUpsert({ flights: [flight()] } as never);
+    expect(res).toMatchObject({ ok: true, synced: 1, created: 0, updated: 0 });
+    expect(prisma.flight.update).not.toHaveBeenCalled();
+    expect(prisma.flight.create).not.toHaveBeenCalled();
   });
 });

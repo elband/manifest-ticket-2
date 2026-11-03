@@ -399,8 +399,11 @@ export function startApiAutoFlush(): () => void {
   const kick = () => {
     const hasPending = readQueue().some((q) => q.status === "pending");
     // Antrean kosong → tetap cek backend supaya indikator online/offline
-    // akurat (flush hanya memperbarui status saat ada yang dikirim).
-    (hasPending ? flushApiOutbox() : probeBackend()).catch(() => {});
+    // akurat (flush hanya memperbarui status saat ada yang dikirim). Probe
+    // dilewati saat tab tersembunyi (indikatornya pun tak terlihat); antrean
+    // pending tetap dikirim walau tersembunyi.
+    if (hasPending) flushApiOutbox().catch(() => {});
+    else if (document.visibilityState === "visible") probeBackend().catch(() => {});
   };
   kick();
   const interval = window.setInterval(kick, 20_000);

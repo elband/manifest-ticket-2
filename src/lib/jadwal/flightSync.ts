@@ -111,6 +111,38 @@ function toSyncPayload(f: Flight): FlightSyncPayload {
   };
 }
 
+// Tiap perangkat menarik FIDS tiap 3 menit dan dulu SELALU mengirim seluruh
+// jadwal ke POST /flights/sync, padahal isinya jarang berubah. Simpan sidik
+// snapshot terakhir yang diterima backend; kirim ulang hanya bila berubah
+// (atau sudah lewat SYNC_REFRESH_MS, sebagai pengaman).
+const LAST_SYNC_KEY = "afvs.fids.lastSync";
+const SYNC_REFRESH_MS = 30 * 60_000;
+
+function isUnchangedSinceLastSync(payload: FlightSyncPayload[]): boolean {
+  try {
+    const raw = window.localStorage.getItem(LAST_SYNC_KEY);
+    if (!raw) return false;
+    const last = JSON.parse(raw) as { at: number; body: string };
+    return (
+      Date.now() - last.at < SYNC_REFRESH_MS &&
+      last.body === JSON.stringify(payload)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rememberSync(payload: FlightSyncPayload[]) {
+  try {
+    window.localStorage.setItem(
+      LAST_SYNC_KEY,
+      JSON.stringify({ at: Date.now(), body: JSON.stringify(payload) }),
+    );
+  } catch {
+    /* storage penuh → sync berikutnya tetap dikirim, tak masalah */
+  }
+}
+
 export interface FidsPullResult {
   ok: boolean;
   added: number;
@@ -176,8 +208,17 @@ export async function pullFidsKeberangkatan(
   // backend / backend mati, jadwal tetap aman di localStorage — pull tak gagal.
   let synced = 0;
   if (isAuthed() && incoming.length > 0) {
-    const sync = await apiSyncFlights(incoming.map(toSyncPayload));
-    if (sync.ok && sync.data) synced = sync.data.synced;
+    const payload = incoming.map(toSyncPayload);
+    if (isUnchangedSinceLastSync(payload)) {
+      // Backend sudah punya snapshot identik → tak perlu POST lagi.
+      synced = payload.length;
+    } else {
+      const sync = await apiSyncFlights(payload);
+      if (sync.ok && sync.data) {
+        synced = sync.data.synced;
+        rememberSync(payload);
+      }
+    }
   }
 
   return { ok: true, added, updated, total: incoming.length, synced };
