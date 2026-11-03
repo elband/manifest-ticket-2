@@ -8,8 +8,12 @@ describe("pengaturan global", () => {
       faceCameraDeviceId: "cam-1",
       scannerCameraDeviceId: "cam-2",
       apiSyncEnabled: true,
+      theme: "dark",
+      soundOn: false,
       kioskResultDurationSec: 0,
     });
+    expect(shared).not.toHaveProperty("theme");
+    expect(shared).not.toHaveProperty("soundOn");
     expect(shared).not.toHaveProperty("faceCameraDeviceId");
     expect(shared).not.toHaveProperty("scannerCameraDeviceId");
     expect(shared).not.toHaveProperty("apiSyncEnabled");
@@ -19,11 +23,14 @@ describe("pengaturan global", () => {
   it("pickSharedSettings hanya mengambil kunci global yang dikenal", () => {
     const picked = pickSharedSettings({
       kioskResultDurationSec: 0,
+      hapticOn: false,
       soundOn: false,
+      theme: "dark",
       scannerCameraDeviceId: "cam-dari-perangkat-lain",
       apiSyncEnabled: false,
       kunciAsing: 123,
     });
-    expect(picked).toEqual({ kioskResultDurationSec: 0, soundOn: false });
+    // Tema & suara milik tiap perangkat — nilai dari server diabaikan.
+    expect(picked).toEqual({ kioskResultDurationSec: 0, hapticOn: false });
   });
 });

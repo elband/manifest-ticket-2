@@ -129,14 +129,17 @@ export function getSettings(): AppSettings {
 
 /**
  * Setelan khusus perangkat — TIDAK ikut disinkronkan ke backend:
- * kamera berbeda di tiap perangkat, dan `apiSyncEnabled` mengikuti login
- * backend perangkat itu sendiri. Selain ini, semua setelan berlaku global
+ * kamera berbeda di tiap perangkat, `apiSyncEnabled` mengikuti login
+ * backend perangkat itu sendiri, dan tema serta suara feedback dipilih
+ * bebas per perangkat. Selain ini, semua setelan berlaku global
  * (lihat settingsSync.ts).
  */
 export const DEVICE_LOCAL_KEYS: readonly (keyof AppSettings)[] = [
   "faceCameraDeviceId",
   "scannerCameraDeviceId",
   "apiSyncEnabled",
+  "theme",
+  "soundOn",
 ];
 
 /** Bagian setelan yang dibagi ke semua perangkat lewat backend. */
