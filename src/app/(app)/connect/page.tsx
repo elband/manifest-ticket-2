@@ -58,6 +58,8 @@ export default function ConnectPage() {
     lastError: null,
     online: true,
     needsLogin: false,
+    blocked: null,
+    deviceCode: null,
   });
 
   // Login form

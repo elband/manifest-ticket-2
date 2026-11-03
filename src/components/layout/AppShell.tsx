@@ -41,6 +41,8 @@ import { logout } from "@/lib/auth";
 import { cn, todayDateString } from "@/lib/utils";
 import { getSettings } from "@/lib/settings";
 import {
+  describeApiOutbox,
+  flushApiOutbox,
   getApiOutboxSummary,
   subscribeApiOutbox,
   type ApiOutboxSummary,
@@ -268,7 +270,9 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     return subscribeApiOutbox(refresh);
   }, []);
   const online = sync?.online ?? true;
-  const waiting = sync?.pending ?? 0;
+  const syncStatus = sync
+    ? describeApiOutbox(sync)
+    : { tone: "ok" as const, label: "Online", hint: "Online" };
 
   // Auto-sync FIDS → data flight tiap 3 menit (silent, fire-and-forget).
   // Saklar di Pengaturan (fidsAutoSync); dicek tiap tick agar bisa di-on/off
@@ -576,28 +580,33 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Online indicator */}
-              <div
+              {/* Status kiriman ke server — termasuk ALASAN bila antrean tertahan
+                  (perangkat belum diizinkan, dicabut, sinkron mati). */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (sync?.blocked) {
+                    window.dispatchEvent(new CustomEvent("afvs:device-recheck"));
+                  } else {
+                    void flushApiOutbox({ maxItems: 100 });
+                  }
+                }}
                 className={cn(
-                  "hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 backdrop-blur sm:inline-flex",
-                  online
-                    ? "bg-emerald-50/80 text-emerald-700 ring-emerald-200"
-                    : "bg-rose-50/80 text-rose-700 ring-rose-200",
+                  "hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold ring-1 backdrop-blur transition hover:brightness-105 sm:inline-flex",
+                  syncStatus.tone === "ok" && "bg-emerald-50/80 text-emerald-700 ring-emerald-200",
+                  syncStatus.tone === "busy" && "bg-sky-50/80 text-sky-700 ring-sky-200",
+                  syncStatus.tone === "warn" && "bg-amber-50/80 text-amber-800 ring-amber-300",
+                  syncStatus.tone === "bad" && "bg-rose-50/80 text-rose-700 ring-rose-200",
                 )}
-                title={
-                  online
-                    ? "Online"
-                    : "Server tidak terjangkau. Data tersimpan di perangkat dan dikirim otomatis saat koneksi pulih."
-                }
+                title={syncStatus.hint}
               >
                 {online ? (
                   <Wifi className="h-3 w-3" />
                 ) : (
                   <WifiOff className="h-3 w-3" />
                 )}
-                {online ? "Online" : "Offline"}
-                {waiting > 0 && ` · ${waiting} menunggu`}
-              </div>
+                {syncStatus.label}
+              </button>
 
               {/* Live clock + date — P-15: komponen sendiri (re-render terisolasi). */}
               <LiveClock locale={locale} />

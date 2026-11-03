@@ -59,7 +59,21 @@ export interface ApiOutboxSummary {
   online: boolean;
   /** Ada data menunggu tapi token backend hilang/kedaluwarsa → perlu login. */
   needsLogin: boolean;
+  /**
+   * Kenapa antrean TIDAK dikirim sama sekali (null = tidak tertahan). Tanpa
+   * ini, label hanya "Online · N menunggu" padahal tak ada yang terkirim.
+   */
+  blocked: OutboxBlock;
+  /** Kode perangkat untuk dicocokkan admin di menu Perangkat. */
+  deviceCode: string | null;
 }
+
+export type OutboxBlock =
+  | "device-pending" // perangkat belum diizinkan admin & tak ada petugas login server
+  | "device-renew" // izin ada, token perangkat sedang diperbarui
+  | "device-revoked" // izin perangkat dicabut admin
+  | "sync-off" // sinkron backend dimatikan di perangkat ini
+  | null;
 
 /** Jatah percobaan untuk kegagalan "permanent" sebelum item ditandai failed. */
 const MAX_ATTEMPTS = 5;
@@ -170,7 +184,83 @@ export function getApiOutboxSummary(): ApiOutboxSummary {
     online,
     needsLogin:
       isBrowser() && getSettings().apiSyncEnabled && !isAuthed() && pending > 0,
+    blocked: blockReason(pending),
+    deviceCode: isBrowser() ? (getDeviceState().code ?? null) : null,
   };
+}
+
+function blockReason(pending: number): OutboxBlock {
+  if (!isBrowser() || pending === 0) return null;
+  if (!isAuthed()) {
+    const status = getDeviceState().status;
+    if (status === "revoked") return "device-revoked";
+    if (status === "approved") return "device-renew";
+    return "device-pending";
+  }
+  return getSettings().apiSyncEnabled ? null : "sync-off";
+}
+
+/** Label + penjelasan status kiriman untuk indikator ringkas (header). */
+export function describeApiOutbox(s: ApiOutboxSummary): {
+  tone: "ok" | "busy" | "warn" | "bad";
+  label: string;
+  hint: string;
+} {
+  const n = s.pending;
+  const waiting = n > 0 ? ` · ${n} menunggu` : "";
+  const error = s.lastError ? `
+Error terakhir: ${s.lastError}` : "";
+  switch (s.blocked) {
+    case "device-pending":
+      return {
+        tone: "warn",
+        label: `Belum diizinkan · ${s.deviceCode ?? "…"}${waiting}`,
+        hint: `Perangkat ini belum diizinkan mengirim data. Minta admin mengizinkan kode ${s.deviceCode ?? "perangkat"} di menu Perangkat. Data tetap tersimpan di perangkat.`,
+      };
+    case "device-renew":
+      return {
+        tone: "busy",
+        label: `Menyambung ulang${waiting}`,
+        hint: "Izin perangkat sedang diperbarui — pengiriman lanjut otomatis.",
+      };
+    case "device-revoked":
+      return {
+        tone: "bad",
+        label: `Perangkat dicabut${waiting}`,
+        hint: "Admin mencabut izin perangkat ini. Data tetap tersimpan; minta admin mengizinkannya lagi di menu Perangkat.",
+      };
+    case "sync-off":
+      return {
+        tone: "warn",
+        label: `Sinkron mati${waiting}`,
+        hint: "Kirim ke server dimatikan di perangkat ini (menu Koneksi). Data tetap tersimpan di perangkat.",
+      };
+  }
+  if (!s.online) {
+    return {
+      tone: "bad",
+      label: `Offline${waiting}`,
+      hint: `Server tidak terjangkau. Data tersimpan di perangkat dan dikirim otomatis saat koneksi pulih.${error}`,
+    };
+  }
+  if (s.failed > 0) {
+    return {
+      tone: "bad",
+      label: `${s.failed} gagal kirim${waiting}`,
+      hint: `Sebagian data ditolak server.${error}`,
+    };
+  }
+  if (s.syncing > 0) {
+    return { tone: "busy", label: `Mengirim${waiting}`, hint: "Sedang mengirim data ke server." };
+  }
+  if (n > 0) {
+    return {
+      tone: "busy",
+      label: `Online${waiting}`,
+      hint: `Data sedang diantre untuk dikirim (±25 tiap 20 detik). Klik untuk kirim sekarang.${error}`,
+    };
+  }
+  return { tone: "ok", label: "Online", hint: "Semua data sudah terkirim ke server." };
 }
 
 export function subscribeApiOutbox(cb: () => void): () => void {
@@ -178,11 +268,13 @@ export function subscribeApiOutbox(cb: () => void): () => void {
   const handler = () => cb();
   window.addEventListener("afvs:api-outbox", handler);
   window.addEventListener("afvs:api-auth", handler);
+  window.addEventListener("afvs:device", handler); // status izin / kode perangkat
   window.addEventListener("online", handler);
   window.addEventListener("offline", handler);
   return () => {
     window.removeEventListener("afvs:api-outbox", handler);
     window.removeEventListener("afvs:api-auth", handler);
+    window.removeEventListener("afvs:device", handler);
     window.removeEventListener("online", handler);
     window.removeEventListener("offline", handler);
   };

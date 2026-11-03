@@ -23,6 +23,7 @@ import {
   enqueueIdentityDecision,
   flushApiOutbox,
   getApiOutboxSummary,
+  describeApiOutbox,
   type ApiOutboxItem,
 } from "../api/outbox";
 import { setSession } from "../storage";
@@ -267,5 +268,46 @@ describe("enqueueIdentityDecision (cek KTP/SIM petugas)", () => {
   it("scan penerbangan uji → tidak dikirim", () => {
     enqueueIdentityDecision({ ...rejected("scn_t"), isTest: true }, false, decidedAt);
     expect(getApiOutboxSummary().total).toBe(0);
+  });
+});
+
+describe("alasan antrean tertahan (indikator header)", () => {
+  beforeEach(() => {
+    installFakeWindow();
+    tokenRef.value = null;
+    deviceRef.value = { status: "unregistered" };
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    tokenRef.value = "tok";
+    deviceRef.value = { status: "unregistered" };
+  });
+
+  it("tanpa token petugas & perangkat belum diizinkan → tampilkan kode, bukan 'Online'", () => {
+    deviceRef.value = { status: "pending", code: "ABC-DEF" } as never;
+    enqueueScanPush(scan("scn_a"));
+    const s = getApiOutboxSummary();
+    expect(s.blocked).toBe("device-pending");
+    const d = describeApiOutbox(s);
+    expect(d.tone).toBe("warn");
+    expect(d.label).toBe("Belum diizinkan · ABC-DEF · 1 menunggu");
+  });
+
+  it("izin perangkat dicabut → 'Perangkat dicabut'", () => {
+    deviceRef.value = { status: "revoked" };
+    enqueueScanPush(scan("scn_a"));
+    expect(describeApiOutbox(getApiOutboxSummary()).label).toBe("Perangkat dicabut · 1 menunggu");
+  });
+
+  it("perangkat diizinkan → tidak tertahan, label biasa", () => {
+    deviceRef.value = { status: "approved", token: "dev-tok" };
+    enqueueScanPush(scan("scn_a"));
+    const s = getApiOutboxSummary();
+    expect(s.blocked).toBeNull();
+    expect(describeApiOutbox(s).label).toBe("Online · 1 menunggu");
+  });
+
+  it("antrean kosong → tidak pernah dianggap tertahan", () => {
+    expect(getApiOutboxSummary().blocked).toBeNull();
   });
 });
