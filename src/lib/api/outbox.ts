@@ -188,7 +188,7 @@ export function subscribeApiOutbox(cb: () => void): () => void {
   };
 }
 
-function resolveStation(): string {
+export function resolveStation(): string {
   // Perangkat yang diizinkan admin bertugas di station yang ditetapkan admin.
   const device = getDeviceState();
   if (device.status === "approved" && device.station) return device.station;

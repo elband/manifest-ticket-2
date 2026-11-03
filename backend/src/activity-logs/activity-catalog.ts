@@ -140,12 +140,14 @@ export const ACTIVITY_CATALOG: Record<string, ActivityDef> = {
 
 /**
  * Tidak dicatat: scan boarding pass & keputusan identitas (sudah tersimpan di
- * tabel ScanEvent, ribuan/hari), sinkron FIDS otomatis tiap perangkat, dan
- * polling token perangkat (tiap 30 dtk selama menunggu izin).
+ * tabel ScanEvent, ribuan/hari), cek kartu PAS (tabel PasScan), sinkron FIDS
+ * otomatis tiap perangkat, dan polling token perangkat (tiap 30 dtk selama
+ * menunggu izin).
  */
 export const SKIPPED = new Set([
   "POST /scan-events",
   "PATCH /scan-events/:eventId/identity",
+  "POST /pas/verify",
   "POST /flights/sync",
   "POST /devices/token",
 ]);

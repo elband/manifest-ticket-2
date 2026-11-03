@@ -22,6 +22,7 @@ function makePrisma() {
       deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     },
     scanEvent: { count: jest.fn().mockResolvedValue(0) },
+    pasScan: { count: jest.fn().mockResolvedValue(0) },
   };
 }
 

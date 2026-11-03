@@ -203,9 +203,13 @@ export class OperatorsService {
     const op = await this.prisma.operator.findUnique({ where: { id } });
     if (!op) throw new NotFoundException("Petugas tidak ditemukan.");
 
-    // FK: ScanEvent.operatorId wajib. Punya riwayat scan → jangan hard-delete,
-    // arahkan ke nonaktifkan supaya jejak audit tetap utuh.
-    const scans = await this.prisma.scanEvent.count({ where: { operatorId: id } });
+    // FK: ScanEvent/PasScan.operatorId wajib. Punya riwayat scan → jangan
+    // hard-delete, arahkan ke nonaktifkan supaya jejak audit tetap utuh.
+    const [boarding, pas] = await Promise.all([
+      this.prisma.scanEvent.count({ where: { operatorId: id } }),
+      this.prisma.pasScan.count({ where: { operatorId: id } }),
+    ]);
+    const scans = boarding + pas;
     if (scans > 0) {
       throw new BadRequestException(
         `Petugas punya ${scans} riwayat scan — nonaktifkan saja (jangan hapus) agar audit tetap utuh.`,

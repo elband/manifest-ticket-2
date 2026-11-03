@@ -10,6 +10,7 @@ import { UserThrottlerGuard } from "./common/user-throttler.guard";
 import { FacePhotosModule } from "./face-photos/face-photos.module";
 import { FlightsModule } from "./flights/flights.module";
 import { OperatorsModule } from "./operators/operators.module";
+import { PasModule } from "./pas/pas.module";
 import { HealthController } from "./health.controller";
 import { PrismaModule } from "./prisma/prisma.module";
 import { RetentionService } from "./retention/retention.service";
@@ -30,6 +31,7 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
     FacePhotosModule,
     ActivityLogsModule,
     DevicesModule,
+    PasModule,
   ],
   controllers: [HealthController],
   // F-02: aktifkan ThrottlerGuard secara GLOBAL (sebelumnya ThrottlerModule

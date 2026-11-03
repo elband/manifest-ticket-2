@@ -4,10 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertOctagon,
+  AlertTriangle,
+  BadgeCheck,
+  CalendarX2,
   Camera,
   CheckCircle2,
   Copy,
   Database,
+  IdCard,
   Loader2,
   MapPin,
   RefreshCw,
@@ -17,8 +21,10 @@ import {
 } from "lucide-react";
 import { cn, todayDateString } from "@/lib/utils";
 import {
+  ApiPasScan,
   ApiScanEvent,
   apiListAllScans,
+  apiListPasScans,
   getFacePhotoObjectUrl,
   isAuthed,
   subscribeAuth,
@@ -59,11 +65,44 @@ const RESULT_FALLBACK = {
   icon: AlertOctagon,
 };
 
+const PAS_STYLE: Record<
+  string,
+  { label: string; cls: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  VALID: {
+    label: "Valid",
+    cls: "bg-emerald-100 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300",
+    icon: BadgeCheck,
+  },
+  EXPIRED: {
+    label: "Kedaluwarsa",
+    cls: RESULT_FALLBACK.cls,
+    icon: CalendarX2,
+  },
+  NOT_FOUND: {
+    label: "Tidak terdaftar",
+    cls: RESULT_FALLBACK.cls,
+    icon: AlertOctagon,
+  },
+  ERROR: {
+    label: "Cek manual",
+    cls: "bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300",
+    icon: AlertTriangle,
+  },
+};
+
+/** Riwayat PAS diambil sekaligus (backend cap 200/halaman) lalu dipaginasi di klien. */
+const PAS_MAX_PAGES = 25;
+
+type ScanKind = "boarding" | "pas";
+
 export default function AdminScansPage() {
   const [authed, setAuthed] = useState(false);
+  const [kind, setKind] = useState<ScanKind>("boarding");
   const [station, setStation] = useState("");
   const [date, setDate] = useState(() => todayDateString());
   const [items, setItems] = useState<ApiScanEvent[]>([]);
+  const [pasItems, setPasItems] = useState<ApiPasScan[]>([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"idle" | "loading" | "ok" | "error">(
     "idle",
@@ -84,6 +123,36 @@ export default function AdminScansPage() {
     }
     setAuthed(true);
     setStatus("loading");
+    if (kind === "pas") {
+      const all: ApiPasScan[] = [];
+      let err: string | null = null;
+      let count = 0;
+      for (let p = 1; p <= PAS_MAX_PAGES; p++) {
+        const res = await apiListPasScans({
+          station: station || undefined,
+          date: date || undefined,
+          page: p,
+          perPage: 200,
+        });
+        if (!res.ok || !res.data) {
+          err = res.error ?? "Gagal memuat data.";
+          break;
+        }
+        all.push(...res.data.items);
+        count = res.data.total;
+        if (res.data.items.length === 0 || all.length >= count) break;
+      }
+      if (err) {
+        setStatus("error");
+        setError(err);
+      } else {
+        setPasItems(all);
+        setTotal(count);
+        setStatus("ok");
+        setError(null);
+      }
+      return;
+    }
     const res = await apiListAllScans({
       station: station || undefined,
       date: date || undefined,
@@ -97,7 +166,7 @@ export default function AdminScansPage() {
       setStatus("error");
       setError(res.error ?? "Gagal memuat data.");
     }
-  }, [station, date]);
+  }, [kind, station, date]);
 
   useEffect(() => {
     load();
@@ -124,16 +193,32 @@ export default function AdminScansPage() {
     return s;
   }, [items]);
 
+  const pasStats = useMemo(() => {
+    const s = { total: pasItems.length, valid: 0, expired: 0, notFound: 0, error: 0 };
+    for (const it of pasItems) {
+      if (it.status === "VALID") s.valid++;
+      else if (it.status === "EXPIRED") s.expired++;
+      else if (it.status === "NOT_FOUND") s.notFound++;
+      else s.error++;
+    }
+    return s;
+  }, [pasItems]);
+
   // P-08: paginasi client-side — hanya ~25 baris (& ~25 fetch foto) per halaman.
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  const listLength = kind === "pas" ? pasItems.length : items.length;
+  const totalPages = Math.max(1, Math.ceil(listLength / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
   const paginated = useMemo(
     () => items.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
     [items, currentPage],
   );
+  const paginatedPas = useMemo(
+    () => pasItems.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [pasItems, currentPage],
+  );
   useEffect(() => {
     setPage(1);
-  }, [station, date]);
+  }, [kind, station, date]);
 
   return (
     <>
@@ -190,7 +275,41 @@ export default function AdminScansPage() {
           </section>
         ) : (
           <>
+            {/* Jenis scan */}
+            <div className="inline-flex gap-1 self-start rounded-2xl border border-slate-200/70 bg-white/95 p-1 shadow-card dark:border-hairline dark:bg-surface/95">
+              {(
+                [
+                  { key: "boarding", label: "Boarding pass", icon: Database },
+                  { key: "pas", label: "Kartu PAS karyawan", icon: IdCard },
+                ] as const
+              ).map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => setKind(t.key)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] font-semibold transition",
+                    kind === t.key
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "text-ink-muted hover:bg-surface-2 hover:text-ink",
+                  )}
+                >
+                  <t.icon className="h-3.5 w-3.5" />
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
             {/* Stats */}
+            {kind === "pas" ? (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
+              <StatCard label="Total cek PAS" value={pasStats.total} tone="slate" icon={<IdCard className="h-4 w-4" />} />
+              <StatCard label="Valid" value={pasStats.valid} tone="emerald" icon={<BadgeCheck className="h-4 w-4" />} />
+              <StatCard label="Kedaluwarsa" value={pasStats.expired} tone="rose" icon={<CalendarX2 className="h-4 w-4" />} />
+              <StatCard label="Tidak terdaftar" value={pasStats.notFound} tone="rose" icon={<ShieldAlert className="h-4 w-4" />} />
+              <StatCard label="Cek manual" value={pasStats.error} tone="amber" icon={<AlertTriangle className="h-4 w-4" />} />
+            </div>
+            ) : (
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
               <StatCard label="Total scan" value={stats.total} tone="slate" icon={<Database className="h-4 w-4" />} />
               <StatCard label="SCP 2" value={stats.scp2} tone="sky" icon={<MapPin className="h-4 w-4" />} />
@@ -199,6 +318,7 @@ export default function AdminScansPage() {
               <StatCard label="Duplikat" value={stats.duplicate} tone="amber" icon={<Copy className="h-4 w-4" />} />
               <StatCard label="Ditolak" value={stats.rejected} tone="rose" icon={<ShieldAlert className="h-4 w-4" />} />
             </div>
+            )}
 
             {/* Filters */}
             <section className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/95 p-3 shadow-card dark:border-hairline dark:bg-surface/95">
@@ -236,22 +356,22 @@ export default function AdminScansPage() {
                 <p className="px-4 py-10 text-center text-sm text-rose-600">
                   {error}
                 </p>
-              ) : items.length === 0 && status === "ok" ? (
+              ) : listLength === 0 && status === "ok" ? (
                 <p className="px-4 py-10 text-center text-sm text-ink-muted">
                   Tidak ada scan pada filter ini.
                 </p>
               ) : (
                 <>
                   <div className="divide-y divide-hairline">
-                    {paginated.map((it) => (
-                      <ScanRow key={it.eventId} ev={it} />
-                    ))}
+                    {kind === "pas"
+                      ? paginatedPas.map((it) => <PasRow key={it.id} ev={it} />)
+                      : paginated.map((it) => <ScanRow key={it.eventId} ev={it} />)}
                   </div>
                   <div className="px-3 py-3 sm:px-4">
                     <Pagination
                       page={currentPage}
                       totalPages={totalPages}
-                      total={items.length}
+                      total={listLength}
                       pageSize={PAGE_SIZE}
                       onPageChange={setPage}
                       label="scan"
@@ -303,6 +423,57 @@ function ScanRow({ ev }: { ev: ApiScanEvent }) {
           {ev.flightNumber ?? "—"}
           {ev.seat ? ` · seat ${ev.seat}` : ""}
           {ev.ktpStatus ? ` · KTP: ${ev.ktpStatus}` : ""}
+        </p>
+      </div>
+      <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">
+        {time}
+      </span>
+    </div>
+  );
+}
+
+function PasRow({ ev }: { ev: ApiPasScan }) {
+  const ps = PAS_STYLE[ev.status] ?? PAS_STYLE.ERROR;
+  const time = new Date(ev.createdAt).toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-surface-2/60 sm:px-4">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-subtle ring-1 ring-hairline">
+        <IdCard className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-[13px] font-bold text-ink">
+            {ev.name || ev.pasNumber || ev.pasId}
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ring-1",
+              ps.cls,
+            )}
+          >
+            <ps.icon className="h-3 w-3" />
+            {ps.label}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-1.5 py-0.5 text-[9px] font-bold uppercase text-ink-muted ring-1 ring-hairline">
+            <MapPin className="h-3 w-3" />
+            {STATION_LABEL[ev.station] ?? ev.station}
+          </span>
+        </div>
+        <p className="mt-0.5 truncate text-[11px] text-ink-muted">
+          {[
+            ev.pasNumber,
+            ev.company,
+            ev.areaCodes ? `area ${ev.areaCodes}` : null,
+            ev.validUntil ? `s/d ${ev.validUntil}` : null,
+            ev.operator?.name ? `petugas ${ev.operator.name}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "—"}
         </p>
       </div>
       <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">

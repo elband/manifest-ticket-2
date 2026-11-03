@@ -31,6 +31,7 @@ model Operator {
   updatedAt    DateTime @updatedAt
 
   scanEvents   ScanEvent[]
+  pasScans     PasScan[]
 
   @@index([station])
   @@index([pinLookup]) // login-PIN & cek-unik O(1) (P-05/P-06)
@@ -143,8 +144,40 @@ model Device {
   updatedAt    DateTime  @updatedAt
 
   scanEvents   ScanEvent[]
+  pasScans     PasScan[]
 
   @@index([status])
+}
+
+// Cek kartu Pas Bandara karyawan di kiosk (QR → halaman validasi
+// pas.aptpairport.id). Status: VALID | EXPIRED | NOT_FOUND | ERROR.
+// Foto pemegang pas TIDAK disimpan (PDP) — hanya data kartu.
+model PasScan {
+  id         String   @id @default(cuid())
+  pasId      String   // ID hex dari URL QR
+  status     String
+  pasNumber  String?
+  name       String?
+  position   String?
+  company    String?
+  category   String?
+  cardColor  String?
+  passType   String?
+  issuedAt   String?  // YYYY-MM-DD
+  validUntil String?  // YYYY-MM-DD
+  areaCodes  String?  // dipisah spasi, mis. "A B P V"
+  station    String
+
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id])
+  deviceId   String?
+  device     Device?  @relation(fields: [deviceId], references: [id])
+
+  createdAt  DateTime @default(now())
+
+  @@index([station, createdAt])
+  @@index([createdAt])
+  @@index([pasId])
 }
 
 // Pengaturan aplikasi frontend yang berlaku GLOBAL untuk semua perangkat.

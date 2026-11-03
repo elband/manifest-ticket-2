@@ -191,8 +191,11 @@ export class DevicesService {
 
   async remove(id: string) {
     await this.mustExist(id);
-    const scans = await this.prisma.scanEvent.count({ where: { deviceId: id } });
-    if (scans > 0) {
+    const [boarding, pas] = await Promise.all([
+      this.prisma.scanEvent.count({ where: { deviceId: id } }),
+      this.prisma.pasScan.count({ where: { deviceId: id } }),
+    ]);
+    if (boarding + pas > 0) {
       throw new BadRequestException(
         "Perangkat ini sudah mengirim data scan — cabut izinnya saja agar jejaknya tetap ada.",
       );

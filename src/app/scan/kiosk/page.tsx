@@ -44,7 +44,9 @@ import {
   AlertCircle,
   History,
   Search,
+  Camera,
 } from "lucide-react";
+import { CameraScanner } from "@/components/scan/CameraScanner";
 import { useCountUp } from "@/lib/useCountUp";
 import {
   getKioskAgentActions,
@@ -84,6 +86,12 @@ import {
 } from "@/lib/scanService";
 import { facePhotoStore } from "@/lib/facePhotoStore";
 import { KtpVerifyModal } from "@/components/scan/KtpVerifyModal";
+import {
+  PasResultBody,
+  pasModalMeta,
+  type PasCheckState,
+} from "@/components/scan/PasResultBody";
+import { isPasQr } from "@/lib/pas";
 import { getEffectiveFlightStatus } from "@/lib/flightStatus";
 import {
   flushOutbox,
@@ -95,10 +103,12 @@ import {
   enqueueIdentityDecision,
   flushApiOutbox,
   getApiOutboxSummary,
+  resolveStation,
   subscribeApiOutbox,
   type ApiOutboxSummary,
 } from "@/lib/api/outbox";
 import {
+  apiVerifyPas,
   getDeviceState,
   isAuthed,
   subscribeDevice,
@@ -160,6 +170,24 @@ interface LastResult {
   passengerName: string | null;
   route: string | null;
   faceUrl: string | null;
+}
+
+/** Kode yang sama dari kamera diabaikan selama masih terlihat + jeda ini. */
+const CAMERA_SAME_CODE_MS = 3500;
+
+const PHONE_QUERY = "(max-width: 767px)";
+
+/** Layar selebar HP (bukan monitor kiosk) → tampilkan mode kamera. */
+function useIsPhone(): boolean {
+  const [phone, setPhone] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY);
+    const sync = () => setPhone(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return phone;
 }
 
 const STATUS_META: Record<
@@ -393,6 +421,13 @@ export default function KioskPage() {
   );
   const [now, setNow] = React.useState(new Date());
   const [modalOpen, setModalOpen] = React.useState(false);
+  // Cek kartu Pas Bandara karyawan (QR pas.aptpairport.id) — modal tersendiri.
+  const [pasCheck, setPasCheck] = React.useState<PasCheckState | null>(null);
+  const [pasOpen, setPasOpen] = React.useState(false);
+  // Kiosk di HP: tak ada scanner USB → mode kamera (boarding pass & kartu PAS).
+  const isPhone = useIsPhone();
+  const [cameraOpen, setCameraOpen] = React.useState(false);
+  const cameraGateRef = React.useRef<{ raw: string; until: number }>({ raw: "", until: 0 });
   const [ktpFlow, setKtpFlow] = React.useState<{
     eventId: string;
     expectedName: string | null;
@@ -705,6 +740,15 @@ export default function KioskPage() {
     return () => clearTimeout(t);
   }, [modalOpen, modalAutoCloseMs, last?.event.id]);
 
+  // Hasil cek PAS: hitung mundur baru mulai setelah data tampil (bukan saat memuat).
+  const pasPhaseKey = pasCheck ? `${pasCheck.key}-${pasCheck.phase}` : null;
+  React.useEffect(() => {
+    if (!pasOpen || modalAutoCloseMs <= 0 || pasCheck?.phase === "loading") return;
+    const t = setTimeout(() => setPasOpen(false), modalAutoCloseMs);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pasOpen, modalAutoCloseMs, pasPhaseKey]);
+
   React.useEffect(() => {
     setOutbox(getOutboxSummary());
     return subscribeOutbox(() => setOutbox(getOutboxSummary()));
@@ -755,6 +799,18 @@ export default function KioskPage() {
       return;
     }
     submittingRef.current = true;
+
+    // === Kartu Pas Bandara karyawan: bukan boarding pass — dicek online ke
+    // server PAS lewat backend, tak lewat processScan/outbox. ===
+    if (isPasQr(raw)) {
+      try {
+        await checkPasCard(raw);
+      } finally {
+        submittingRef.current = false;
+      }
+      return;
+    }
+    setPasOpen(false);
 
     // === Mode KTP-first: nama boarding pass dicocokkan ke KTP yang sudah dipindai
     // di kamera utama. Tanpa capture wajah, tanpa modal KTP (inline). ===
@@ -1051,6 +1107,51 @@ export default function KioskPage() {
     }
   };
 
+  const checkPasCard = async (raw: string) => {
+    const key = `pas-${Date.now()}`;
+    setModalOpen(false);
+    setPasCheck({ phase: "loading", key });
+    setPasOpen(true);
+    setValue("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+
+    const res = await apiVerifyPas({
+      raw,
+      operatorId: session?.id,
+      station: resolveStation(),
+    });
+    // Scan lain (PAS/boarding) sudah menggantikan yang ini → abaikan hasil lama.
+    setPasCheck((cur) => {
+      if (cur?.key !== key) return cur;
+      if (res.ok && res.data) return { phase: "done", key, result: res.data };
+      return {
+        phase: "failed",
+        key,
+        error: `Tidak dapat memeriksa kartu PAS: ${res.error ?? "server tidak merespons"}.`,
+      };
+    });
+    playFeedbackHaptic(
+      res.ok && res.data?.status === "VALID" ? "VALID_FLIGHT" : "INVALID_BARCODE",
+    );
+  };
+
+  // Kamera terus membaca selama kode masih di depan lensa. Kode yang sama baru
+  // diterima lagi setelah hilang dari bidikan ±3,5 dtk — tanpa ini boarding pass
+  // yang masih diarahkan langsung tercatat DUPLICATE begitu modal tertutup.
+  const onCameraDecode = (raw: string) => {
+    const now = Date.now();
+    const gate = cameraGateRef.current;
+    if (raw === gate.raw && now < gate.until) {
+      gate.until = now + CAMERA_SAME_CODE_MS;
+      return;
+    }
+    // Hasil scan sebelumnya masih tampil / menunggu keputusan petugas.
+    if (submittingRef.current || modalOpen || pasOpen || ktpFlow || ktpDecision) return;
+    cameraGateRef.current = { raw, until: now + CAMERA_SAME_CODE_MS };
+    setInputMode("idle");
+    void submit(raw);
+  };
+
   const exitKiosk = () => router.push("/scan");
   const cancelPower = () => {
     setPowerConfirm(null);
@@ -1266,23 +1367,26 @@ export default function KioskPage() {
         "dark:bg-kiosk-concrete-dark dark:text-white",
       )}
     >
-      {/* Header = bidang rambu biru, teks putih. */}
-      <header className="relative z-30 flex shrink-0 items-center justify-between gap-4 bg-kiosk-sign px-4 py-2.5 text-white sm:px-6">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-white text-kiosk-sign">
-            <ShieldCheck className="h-7 w-7" strokeWidth={2.25} />
+      {/* Header = bidang rambu biru, teks putih. Di HP chip status turun ke
+          baris kedua supaya judul & menu tidak terdorong keluar layar. */}
+      <header className="relative z-30 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 bg-kiosk-sign px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] text-white sm:flex-nowrap sm:px-6 sm:py-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-white text-kiosk-sign sm:h-12 sm:w-12">
+            <ShieldCheck className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.25} />
           </span>
           <div className="min-w-0 leading-none">
-            <h1 className="truncate text-[22px] font-bold tracking-tight">
-              Pemeriksaan boarding pass
+            <h1 className="truncate text-[17px] font-bold tracking-tight sm:text-[22px]">
+              <span className="sm:hidden">Pemeriksaan</span>
+              <span className="hidden sm:inline">Pemeriksaan boarding pass</span>
             </h1>
-            <p className="mt-1 truncate text-[15px] font-medium text-white/75">
+            <p className="mt-1 truncate text-[13px] font-medium text-white/75 sm:text-[15px]">
               {session?.name ?? "—"}, {flightsToday} flight hari ini
             </p>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        {/* HP: baris kedua selebar layar (order-last); layar lebar: sebaris. */}
+        <div className="order-last flex w-full min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] sm:order-none sm:w-auto sm:shrink-0 sm:overflow-visible">
           <ScannerStatusPill mode={inputMode} />
           <HeaderClock now={now} />
           {(settings.apiSyncEnabled || deviceStatus !== "approved") && (
@@ -1306,12 +1410,15 @@ export default function KioskPage() {
               type="button"
               onClick={handleDemoScan}
               disabled={demoLoading}
-              className="inline-flex h-11 items-center gap-2 rounded-md bg-white/15 px-3.5 text-[14px] font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-white/15 px-2.5 text-[12px] font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:gap-2 sm:px-3.5 sm:text-[14px]"
             >
               <Sparkles className="h-4 w-4" />
               {demoLoading ? "Memproses…" : "Demo scan"}
             </button>
           )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
           <HardRefreshButton />
           <KioskMenu
             isDark={isDark}
@@ -1350,6 +1457,9 @@ export default function KioskPage() {
         // Nonaktif selama keypad PIN / riwayat terbuka: input tak bisa
         // difokus/diketik, jadi ketikan di sana tidak terkirim sebagai scan.
         disabled={scanPaused}
+        // Fokus dipaksa tiap 500 ms — di HP jangan sampai memunculkan keyboard
+        // layar. Scanner USB/Bluetooth tetap mengetik seperti biasa.
+        inputMode="none"
         autoComplete="off"
         spellCheck={false}
         aria-label="Scanner input"
@@ -1357,13 +1467,16 @@ export default function KioskPage() {
       />
 
       {/* Aula: panel scanner boarding pass layar penuh (untuk penumpang). */}
-      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:overflow-visible">
+      <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3 sm:px-6 sm:py-5 lg:overflow-visible">
         <ScanReadyCard
           ktpFirst={settings.ktpScanFirst}
           pendingName={pendingKtp?.name ?? null}
           showExempt={settings.ktpScanFirst && settings.allowNoKtpExemption}
           exemptActive={exemptNext}
           onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
+          onOpenCamera={isPhone ? () => setCameraOpen(true) : undefined}
+          historyCount={todayScans.length}
+          onOpenHistory={() => setHistoryOpen(true)}
         />
         <HistoryEdgeTab count={todayScans.length} onOpen={() => setHistoryOpen(true)} />
       </main>
@@ -1425,6 +1538,36 @@ export default function KioskPage() {
             ) : (
               <ResultModalBody last={last} meta={lastMeta} />
             )}
+          </Modal>
+        );
+      })()}
+
+      {pasCheck && (() => {
+        const meta = pasModalMeta(pasCheck);
+        return (
+          <Modal
+            open={pasOpen}
+            onClose={() => setPasOpen(false)}
+            tone={meta.tone}
+            size="xl"
+            icon={meta.icon}
+            title={
+              <span className="text-xl font-black tracking-tight">{meta.label}</span>
+            }
+            description={meta.description}
+            footer={
+              <ModalCloseFooter
+                onClose={() => setPasOpen(false)}
+                barGradient={
+                  meta.tone === "info" ? "from-blue-500 to-cyan-400" : ACCENT_BAR[meta.tone]
+                }
+                // Tunggu hasil dulu; hitung mundur baru mulai setelah data tampil.
+                durationMs={pasCheck.phase === "loading" ? 0 : modalAutoCloseMs}
+                resetKey={`${pasCheck.key}-${pasCheck.phase}`}
+              />
+            }
+          >
+            <PasResultBody state={pasCheck} />
           </Modal>
         );
       })()}
@@ -1536,6 +1679,17 @@ export default function KioskPage() {
           </Modal>
         );
       })()}
+
+      <CameraScanner
+        open={cameraOpen && isPhone && !scanPaused}
+        onClose={() => {
+          setCameraOpen(false);
+          setTimeout(() => inputRef.current?.focus(), 0);
+        }}
+        onDecode={(raw) => onCameraDecode(raw)}
+        initialHint="Arahkan ke barcode boarding pass atau QR kartu PAS…"
+        variant="fullscreen"
+      />
 
       <ScanHistoryDrawer
         open={historyOpen}
@@ -1664,11 +1818,11 @@ function KioskTicker() {
   );
   return (
     <footer className="relative z-20 flex shrink-0 items-stretch overflow-hidden border-t border-kiosk-line bg-kiosk-asphalt">
-      <div className="relative z-10 flex shrink-0 items-center gap-2 bg-kiosk-sign px-4 text-white">
+      <div className="relative z-10 flex shrink-0 items-center gap-2 bg-kiosk-sign px-3 text-white sm:px-4">
         <Megaphone className="h-4 w-4" />
-        <span className="text-[14px] font-bold">Info bandara</span>
+        <span className="hidden text-[14px] font-bold sm:inline">Info bandara</span>
       </div>
-      <div className="relative flex-1 overflow-hidden py-2.5">
+      <div className="relative flex-1 overflow-hidden py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:py-2.5">
         <p className="sr-only">{TICKER_ITEMS.join(". ")}</p>
         <div className="flex w-max animate-marquee motion-reduce:animate-none">
           <Row />
@@ -1693,13 +1847,22 @@ function ScanReadyCard({
   showExempt = false,
   exemptActive = false,
   onToggleExempt,
+  onOpenCamera,
+  historyCount = 0,
+  onOpenHistory,
 }: {
   ktpFirst?: boolean;
   pendingName?: string | null;
   showExempt?: boolean;
   exemptActive?: boolean;
   onToggleExempt?: () => void;
+  /** Ada bila kiosk berjalan di HP → tombol besar "Scan dengan kamera". */
+  onOpenCamera?: () => void;
+  /** Di HP tab riwayat di tepi kanan disembunyikan; diganti tombol di kartu. */
+  historyCount?: number;
+  onOpenHistory?: () => void;
 }) {
+  const cameraMode = !!onOpenCamera;
   // 3 keadaan: (a) KTP-first menunggu KTP, (b) KTP terbaca menunggu boarding pass,
   // (c) normal menunggu boarding pass.
   const identityReady = ktpFirst && !!pendingName;
@@ -1724,10 +1887,14 @@ function ScanReadyCard({
     ? "Identitas terbaca — sekarang scan boarding pass penumpang."
     : waitingKtp
       ? "Tunjukkan KTP ke kamera untuk membaca identitas penumpang."
-      : "Arahkan Boarding pass ke scanner untuk memulai validasi.";
+      : cameraMode
+        ? "Scan boarding pass penumpang atau QR kartu PAS karyawan dengan kamera."
+        : "Arahkan Boarding pass ke scanner untuk memulai validasi.";
 
   return (
-    <div className="relative flex w-full flex-1 flex-col justify-center overflow-hidden rounded-xl bg-kiosk-paper px-6 py-6 tall:py-8 shadow-[0_30px_60px_-30px_rgba(30,34,40,0.45)] dark:bg-kiosk-asphalt">
+    // min-h-fit: di HP isi kartu bisa lebih tinggi dari ruang tersisa → kartu
+    // memanjang & <main> yang menggulir, bukan isinya terpotong.
+    <div className="relative flex min-h-fit w-full flex-1 flex-col justify-center overflow-hidden rounded-2xl bg-kiosk-paper px-4 py-5 shadow-[0_30px_60px_-30px_rgba(30,34,40,0.45)] sm:rounded-xl sm:px-6 sm:py-6 tall:py-8 dark:bg-kiosk-asphalt">
       <div
         aria-hidden
         className="absolute inset-0 bg-gradient-to-br from-cyan-50/50 via-transparent to-blue-50/50 dark:from-cyan-500/5 dark:to-blue-500/5"
@@ -1743,11 +1910,11 @@ function ScanReadyCard({
         ))}
       </div>
 
-      <div className="relative flex flex-col items-center gap-5 tall:gap-7">
+      <div className="relative flex flex-col items-center gap-4 sm:gap-5 tall:gap-7">
         <Waveform />
 
         {/* Ikon + bingkai bidik + cincin putus-putus berputar */}
-        <div className="relative flex h-44 w-44 items-center tall:h-56 tall:w-56 justify-center">
+        <div className="relative flex h-32 w-32 items-center justify-center sm:h-44 sm:w-44 tall:h-56 tall:w-56">
           <span
             aria-hidden
             className="absolute inset-0 rounded-full border-2 border-dashed border-cyan-400/40 animate-spin-slow motion-reduce:animate-none dark:border-cyan-300/30"
@@ -1755,11 +1922,11 @@ function ScanReadyCard({
           <span
             aria-hidden
             className={cn(
-              "absolute inset-5 rounded-full animate-ripple tall:inset-6 motion-reduce:animate-none",
+              "absolute inset-4 rounded-full animate-ripple sm:inset-5 tall:inset-6 motion-reduce:animate-none",
               identityReady ? "bg-emerald-300/30" : "bg-cyan-300/30",
             )}
           />
-          <span aria-hidden className="absolute inset-7 tall:inset-8">
+          <span aria-hidden className="absolute inset-5 sm:inset-7 tall:inset-8">
             <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg tall:h-6 tall:w-6 border-l-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
             <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg tall:h-6 tall:w-6 border-r-[3px] border-t-[3px] border-cyan-500 dark:border-cyan-300" />
             <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg tall:h-6 tall:w-6 border-b-[3px] border-l-[3px] border-cyan-500 dark:border-cyan-300" />
@@ -1767,7 +1934,7 @@ function ScanReadyCard({
           </span>
           <span
             className={cn(
-              "relative flex h-24 w-24 items-center tall:h-28 tall:w-28 justify-center rounded-3xl bg-gradient-to-br text-white shadow-2xl ring-4 ring-white/70 dark:ring-white/10",
+              "relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br text-white shadow-2xl ring-4 ring-white/70 sm:h-24 sm:w-24 tall:h-28 tall:w-28 dark:ring-white/10",
               chip,
             )}
           >
@@ -1781,24 +1948,68 @@ function ScanReadyCard({
               Identitas KTP
             </p>
           )}
-          <p className="font-board text-4xl font-bold tracking-tight tall:text-5xl 2xl:text-6xl">{title}</p>
-          <p className="mx-auto mt-2 max-w-xl text-[17px] leading-snug text-slate-500 dark:text-white/55">
+          <p className="font-board text-[28px] font-bold leading-tight tracking-tight sm:text-4xl tall:text-5xl 2xl:text-6xl">
+            {cameraMode && !ktpFirst ? "SIAP SCAN" : title}
+          </p>
+          <p className="mx-auto mt-2 max-w-xl text-[15px] leading-snug text-slate-500 sm:text-[17px] dark:text-white/55">
             {subtitle}
           </p>
         </div>
 
-        {/* Sumber boarding pass yang bisa dipindai */}
+        {/* HP: tombol utama membuka kamera layar penuh. */}
+        {cameraMode && !waitingKtp && (
+          <button
+            type="button"
+            onClick={onOpenCamera}
+            className="group relative flex w-full max-w-sm items-center justify-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 px-5 py-4 text-white shadow-lg shadow-blue-600/30 ring-1 ring-white/20 transition active:scale-[0.98]"
+          >
+            <span
+              aria-hidden
+              className="absolute inset-0 bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.25)_50%,transparent_70%)] animate-shimmer motion-reduce:animate-none"
+            />
+            <span className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-white/20">
+              <Camera className="h-6 w-6" />
+            </span>
+            <span className="relative text-left leading-tight">
+              <span className="block text-[17px] font-bold">Scan dengan kamera</span>
+              <span className="block text-[12.5px] font-medium text-white/80">
+                Boarding pass · QR kartu PAS
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* Sumber yang bisa dipindai */}
         {!waitingKtp && (
-          <div className="flex flex-wrap items-center justify-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-4 py-2 text-[14px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
-              <Smartphone className="h-4 w-4" />
-              Layar HP
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-4 py-2 text-[14px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 dark:text-cyan-300">
-              <Ticket className="h-4 w-4" />
-              Kertas boarding pass
-            </span>
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
+            {[
+              { icon: Smartphone, label: "Layar HP" },
+              { icon: Ticket, label: "Kertas boarding pass" },
+              { icon: IdCard, label: "Kartu PAS" },
+            ].map(({ icon: Icon, label }) => (
+              <span
+                key={label}
+                className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-[12.5px] font-bold text-cyan-700 ring-1 ring-cyan-500/25 sm:px-4 sm:py-2 sm:text-[14px] dark:text-cyan-300"
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+              </span>
+            ))}
           </div>
+        )}
+
+        {onOpenHistory && (
+          <button
+            type="button"
+            onClick={onOpenHistory}
+            className="inline-flex items-center gap-2 rounded-xl bg-kiosk-asphalt px-4 py-2.5 text-[14px] font-semibold text-white shadow-md ring-1 ring-kiosk-line sm:hidden"
+          >
+            <History className="h-4 w-4" />
+            Riwayat scan
+            <span className="rounded-md bg-white/10 px-1.5 py-0.5 font-board text-[15px] leading-none tabular-nums text-kiosk-sign-glow">
+              {historyCount}
+            </span>
+          </button>
         )}
 
         {showExempt && (
@@ -1836,7 +2047,8 @@ function Waveform() {
     [],
   );
   return (
-    <div className="flex h-16 items-center gap-1.5 tall:h-24">
+    // Hiasan saja — di HP ruang vertikal dipakai untuk tombol kamera.
+    <div className="hidden h-16 items-center gap-1.5 sm:flex tall:h-24">
       {bars.map((b, i) => (
         <span
           key={i}
@@ -1971,13 +2183,14 @@ function DepartureBoard({
 
   return (
     <section className="relative z-20 shrink-0 bg-kiosk-asphalt text-white">
-      <div className="flex items-stretch gap-4 px-4 py-3 sm:px-6">
-        <div className="flex w-[118px] shrink-0 flex-col justify-center sm:w-[180px]">
-          <div className="leading-none">
-            <h2 className="font-board text-[22px] font-semibold text-kiosk-sign-glow sm:text-[26px]">
+      {/* HP: judul sebaris di atas, sel flight selebar layar di bawahnya. */}
+      <div className="flex flex-col gap-2 px-3 py-2.5 sm:flex-row sm:items-stretch sm:gap-4 sm:px-6 sm:py-3">
+        <div className="flex shrink-0 flex-col justify-center sm:w-[180px]">
+          <div className="flex items-baseline justify-between gap-3 leading-none sm:block">
+            <h2 className="font-board text-[18px] font-semibold text-kiosk-sign-glow sm:text-[26px]">
               Sedang boarding
             </h2>
-            <p className="mt-1 text-[14px] text-white/60">
+            <p className="text-[12px] text-white/60 sm:mt-1 sm:text-[14px]">
               Now boarding
               {pages > 1 && (
                 <span className="tabular-nums">
@@ -2028,7 +2241,7 @@ function FlightBoardCell({
     <div
       title={`${flight.flightNumber}, ${airlineName}, ${flight.originAirport} ke ${flight.destinationAirport}`}
       className={cn(
-        "flex min-w-[224px] max-w-[320px] flex-1 basis-0 flex-col justify-between gap-2 rounded-[4px] bg-kiosk-cell px-3 py-2.5 ring-1 ring-kiosk-line",
+        "flex min-w-0 flex-1 basis-0 flex-col justify-between gap-2 rounded-[4px] bg-kiosk-cell px-3 py-2.5 ring-1 ring-kiosk-line sm:min-w-[224px] sm:max-w-[320px]",
         highlight && "ring-2 ring-kiosk-sign-glow",
       )}
     >
@@ -2267,7 +2480,7 @@ function HistoryEdgeTab({ count, onOpen }: { count: number; onOpen: () => void }
       type="button"
       onClick={onOpen}
       aria-label={`Buka riwayat scan, ${count} scan hari ini`}
-      className="group absolute right-0 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-3 rounded-l-xl bg-kiosk-asphalt py-4 pl-3 pr-2.5 text-white shadow-[-10px_0_30px_-12px_rgba(30,34,40,0.6)] ring-1 ring-kiosk-line transition hover:pl-4 hover:pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kiosk-sign-glow motion-reduce:transition-none"
+      className="group absolute right-0 top-1/2 z-20 hidden -translate-y-1/2 flex-col items-center sm:flex gap-3 rounded-l-xl bg-kiosk-asphalt py-4 pl-3 pr-2.5 text-white shadow-[-10px_0_30px_-12px_rgba(30,34,40,0.6)] ring-1 ring-kiosk-line transition hover:pl-4 hover:pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kiosk-sign-glow motion-reduce:transition-none"
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-md bg-kiosk-sign">
         <History className="h-5 w-5" />

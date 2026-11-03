@@ -502,6 +502,114 @@ export async function apiDecideIdentity(
   }
 }
 
+// ─────────────────────────── Kartu Pas Bandara (karyawan) ────────────────
+
+export type PasStatus = "VALID" | "EXPIRED" | "NOT_FOUND" | "ERROR";
+
+export interface PasCard {
+  name: string | null;
+  position: string | null;
+  company: string | null;
+  category: string | null;
+  categoryNote: string | null;
+  pasNumber: string | null;
+  cardColor: string | null;
+  cardColorCss: string | null;
+  passType: string | null;
+  issuedAt: string | null; // YYYY-MM-DD
+  validUntil: string | null; // YYYY-MM-DD
+  areaCodes: string[];
+  photoUrl: string | null;
+}
+
+export interface PasVerifyResult {
+  id: string;
+  pasId: string;
+  status: PasStatus;
+  message: string;
+  card: PasCard | null;
+  checkedAt: string;
+}
+
+/** Backend menunggu server PAS maks. 8 dtk — beri ruang di atasnya. */
+const PAS_VERIFY_TIMEOUT_MS = 15_000;
+
+/** Cek kartu PAS dari isi QR-nya; backend yang mengambil halaman validasi. */
+export async function apiVerifyPas(input: {
+  raw: string;
+  operatorId?: string | null;
+  station?: string | null;
+}): Promise<ApiResult<PasVerifyResult>> {
+  try {
+    const res = await authedFetch(
+      "/pas/verify",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          raw: input.raw,
+          operatorId: input.operatorId ?? undefined,
+          station: input.station ?? undefined,
+        }),
+      },
+      PAS_VERIFY_TIMEOUT_MS,
+    );
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as PasVerifyResult };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+export interface ApiPasScan {
+  id: string;
+  pasId: string;
+  status: PasStatus;
+  pasNumber: string | null;
+  name: string | null;
+  position: string | null;
+  company: string | null;
+  category: string | null;
+  cardColor: string | null;
+  passType: string | null;
+  issuedAt: string | null;
+  validUntil: string | null;
+  areaCodes: string | null;
+  station: string;
+  operatorId: string;
+  operator?: { name: string } | null;
+  deviceId: string | null;
+  createdAt: string;
+}
+
+export async function apiListPasScans(params: {
+  station?: string;
+  date?: string;
+  status?: string;
+  page?: number;
+  perPage?: number;
+}): Promise<ApiResult<Paginated<ApiPasScan>>> {
+  const qs = new URLSearchParams();
+  if (params.station) qs.set("station", params.station);
+  if (params.date) qs.set("date", params.date);
+  if (params.status) qs.set("status", params.status);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.perPage) qs.set("perPage", String(params.perPage));
+  const path = `/pas/scans?${qs.toString()}`;
+  return dedupGet(path, async () => {
+    try {
+      const res = await authedFetch(path);
+      const body = await readJson(res);
+      if (!res.ok)
+        return { ok: false, status: res.status, error: httpError(res.status, body) };
+      return { ok: true, status: res.status, data: body as Paginated<ApiPasScan> };
+    } catch (e) {
+      return { ok: false, error: errMsg(e) };
+    }
+  });
+}
+
 export interface ApiScanEvent {
   id: string;
   eventId: string;
