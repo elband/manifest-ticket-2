@@ -10,6 +10,13 @@ export interface JwtPayload {
   email: string;
   role: Role;
   station: string | null;
+  /**
+   * "device" = token perangkat yang diizinkan admin (lihat DevicesService):
+   * `sub` = id Device (BUKAN operator), `role` = "operator", `name` = nama
+   * perangkat. Tanpa `kind` = token petugas biasa.
+   */
+  kind?: "device";
+  name?: string;
 }
 
 @Injectable()

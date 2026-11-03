@@ -5,6 +5,9 @@
  *
  * Client-side fetch wrapper:
  * - JWT disimpan di localStorage (`afvs.api.token` + `afvs.api.user`).
+ * - Perangkat yang diizinkan admin punya token sendiri (`afvs.device.state`,
+ *   dikelola device.ts) — dipakai bila tak ada token petugas, jadi kiosk tetap
+ *   bisa kirim/ambil data tanpa login manual ke backend.
  * - `authedFetch` auto-attach Bearer token & auto-logout pada 401.
  * - Semua fungsi return objek `ApiResult` (tidak melempar) supaya UI mudah.
  *
@@ -62,10 +65,26 @@ export interface ScanPushFields {
   ktpName?: string | null;
   ktpSimilarity?: number | null;
   ktpCapturedAt?: string | null;
+  /** Petugas (id operator backend) yang scan — dipakai bila dikirim dgn token perangkat. */
+  operatorId?: string | null;
 }
 
 const TOKEN_KEY = "afvs.api.token";
 const USER_KEY = "afvs.api.user";
+const DEVICE_STATE_KEY = "afvs.device.state";
+
+export type DeviceStatus = "unregistered" | "pending" | "approved" | "revoked";
+
+/** Status izin perangkat ini di backend (lihat device.ts). */
+export interface DeviceState {
+  status: DeviceStatus;
+  id?: string;
+  code?: string;
+  name?: string;
+  station?: string | null;
+  token?: string | null;
+  expiresAt?: string | null;
+}
 
 function isBrowser() {
   return typeof window !== "undefined";
@@ -83,18 +102,68 @@ export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
+/**
+ * Identitas backend yang dipakai saat ini: petugas yang login, atau — bila
+ * tidak ada — perangkat yang diizinkan admin (role setara operator).
+ */
 export function getApiUser(): ApiUser | null {
   if (!isBrowser()) return null;
   try {
     const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as ApiUser) : null;
+    if (raw) return JSON.parse(raw) as ApiUser;
   } catch {
-    return null;
+    /* data rusak → anggap tak ada petugas */
   }
+  const device = getDeviceState();
+  if (getDeviceToken() && device.id) {
+    return {
+      id: device.id,
+      email: "",
+      name: device.name ?? "Perangkat",
+      role: "operator",
+      station: device.station ?? null,
+    };
+  }
+  return null;
 }
 
 export function isAuthed(): boolean {
-  return Boolean(getToken());
+  return Boolean(getToken() || getDeviceToken());
+}
+
+export function getDeviceState(): DeviceState {
+  if (!isBrowser()) return { status: "unregistered" };
+  try {
+    const raw = window.localStorage.getItem(DEVICE_STATE_KEY);
+    if (raw) return { status: "unregistered", ...(JSON.parse(raw) as Partial<DeviceState>) };
+  } catch {
+    /* state rusak → daftar ulang */
+  }
+  return { status: "unregistered" };
+}
+
+/** Simpan status perangkat; beri tahu UI & sinkronisasi bila akses berubah. */
+export function setDeviceState(next: DeviceState) {
+  if (!isBrowser()) return;
+  const prevToken = getDeviceToken();
+  window.localStorage.setItem(DEVICE_STATE_KEY, JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent("afvs:device", { detail: next }));
+  if (prevToken !== getDeviceToken()) notifyAuth();
+}
+
+export function subscribeDevice(cb: (s: DeviceState) => void): () => void {
+  if (!isBrowser()) return () => {};
+  const handler = () => cb(getDeviceState());
+  window.addEventListener("afvs:device", handler);
+  return () => window.removeEventListener("afvs:device", handler);
+}
+
+/** Token perangkat yang masih berlaku, atau null. */
+export function getDeviceToken(): string | null {
+  const s = getDeviceState();
+  if (s.status !== "approved" || !s.token) return null;
+  if (s.expiresAt && Date.parse(s.expiresAt) <= Date.now()) return null;
+  return s.token;
 }
 
 function setAuth(token: string, user: ApiUser) {
@@ -162,19 +231,44 @@ export async function authedFetch(
   init?: RequestInit,
   timeoutMs?: number,
 ): Promise<Response> {
-  const token = getToken();
+  const userToken = getToken();
+  const token = userToken ?? getDeviceToken();
+  let res = await fetchWithToken(path, token, init, timeoutMs);
+  if (res.status !== 401 || !token) return res;
+  let usedDevice = !userToken;
+  if (userToken) {
+    // Token petugas habis → keluarkan, lalu coba sekali lagi atas nama
+    // perangkat (bila diizinkan) supaya kiriman tidak tertahan.
+    clearAuth();
+    const deviceToken = getDeviceToken();
+    if (deviceToken) {
+      res = await fetchWithToken(path, deviceToken, init, timeoutMs);
+      usedDevice = true;
+    }
+  }
+  if (res.status === 401 && usedDevice) {
+    // Token perangkat ditolak (dicabut / kedaluwarsa) → minta device.ts cek ulang.
+    window.dispatchEvent(new CustomEvent("afvs:device-recheck"));
+  }
+  return res;
+}
+
+async function fetchWithToken(
+  path: string,
+  token: string | null,
+  init: RequestInit | undefined,
+  timeoutMs: number | undefined,
+): Promise<Response> {
   const headers = new Headers(init?.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const ctrl = timeoutMs ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
-    const res = await fetch(`${getApiBase()}${path}`, {
+    return await fetch(`${getApiBase()}${path}`, {
       ...init,
       headers,
       signal: ctrl?.signal ?? init?.signal,
     });
-    if (res.status === 401) clearAuth();
-    return res;
   } finally {
     if (timer) clearTimeout(timer);
   }
@@ -369,6 +463,7 @@ export async function apiPushScan(
     if (fields.ktpSimilarity != null)
       fd.set("ktpSimilarity", String(fields.ktpSimilarity));
     if (fields.ktpCapturedAt) fd.set("ktpCapturedAt", fields.ktpCapturedAt);
+    if (fields.operatorId) fd.set("operatorId", fields.operatorId);
     if (faceBlob) fd.set("facePhoto", faceBlob, `${fields.eventId}.jpg`);
 
     const res = await authedFetch(
@@ -834,4 +929,159 @@ export async function apiPutAppSettings(
   } catch (e) {
     return { ok: false, error: errMsg(e) };
   }
+}
+
+// ─────────────────────────── Log aktivitas (admin) ───────────────────────────
+
+export type ActivityCategory =
+  | "auth"
+  | "operator"
+  | "flight"
+  | "settings"
+  | "device"
+  | "system";
+
+export interface ApiActivityLog {
+  id: string;
+  at: string; // ISO
+  operatorId: string | null;
+  operatorName: string | null;
+  operatorEmail: string | null;
+  operatorRole: string | null;
+  action: string;
+  category: ActivityCategory;
+  description: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  success: boolean;
+  targetId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  durationMs: number;
+  meta: { fields?: string[]; error?: string } | null;
+}
+
+export interface ApiActivitySummary {
+  today: number;
+  failedToday: number;
+  failedLogins24h: number;
+  activeUsersToday: number;
+  byCategory: { category: ActivityCategory; count: number }[];
+  topActors: { operatorId: string; name: string | null; role: string | null; count: number }[];
+  /** Bucket per jam: `hour` = epoch-jam (ms / 3_600_000). */
+  hourly: { hour: number; count: number }[];
+}
+
+export interface ActivityLogFilter {
+  q?: string;
+  category?: string;
+  operatorId?: string;
+  status?: "success" | "failed";
+  from?: string; // ISO
+  to?: string; // ISO
+  page?: number;
+  perPage?: number;
+}
+
+export async function apiListActivityLogs(
+  filter: ActivityLogFilter,
+): Promise<ApiResult<Paginated<ApiActivityLog>>> {
+  try {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(filter)) {
+      if (v !== undefined && v !== "") qs.set(k, String(v));
+    }
+    const res = await authedFetch(`/activity-logs?${qs.toString()}`, { cache: "no-store" }, 15_000);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as Paginated<ApiActivityLog> };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+export async function apiActivitySummary(
+  todayStart: string,
+): Promise<ApiResult<ApiActivitySummary>> {
+  try {
+    const qs = new URLSearchParams({ todayStart });
+    const res = await authedFetch(`/activity-logs/summary?${qs}`, { cache: "no-store" }, 15_000);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiActivitySummary };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+export async function apiActivityActors(): Promise<
+  ApiResult<{ items: { operatorId: string; name: string | null }[] }>
+> {
+  try {
+    const res = await authedFetch("/activity-logs/actors", { cache: "no-store" }, 15_000);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return {
+      ok: true,
+      status: res.status,
+      data: body as { items: { operatorId: string; name: string | null }[] },
+    };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+// ─────────────────────────── Perangkat (admin) ───────────────────────────
+
+export interface ApiDevice {
+  id: string;
+  name: string;
+  station: string | null;
+  status: "pending" | "approved" | "revoked";
+  code: string;
+  userAgent: string | null;
+  lastIp: string | null;
+  lastSeenAt: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  scanCount: number;
+}
+
+async function deviceRequest<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
+  try {
+    const res = await authedFetch(path, init);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as T };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+const jsonInit = (method: string, body?: unknown): RequestInit => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
+
+export function apiListDevices() {
+  return deviceRequest<{ items: ApiDevice[] }>("/devices", { cache: "no-store" });
+}
+
+export function apiApproveDevice(id: string, input: { name?: string; station: string }) {
+  return deviceRequest<ApiDevice>(`/devices/${id}/approve`, jsonInit("POST", input));
+}
+
+export function apiUpdateDevice(id: string, patch: { name?: string; station?: string }) {
+  return deviceRequest<ApiDevice>(`/devices/${id}`, jsonInit("PATCH", patch));
+}
+
+export function apiRevokeDevice(id: string) {
+  return deviceRequest<ApiDevice>(`/devices/${id}/revoke`, jsonInit("POST"));
+}
+
+export function apiDeleteDevice(id: string) {
+  return deviceRequest<{ ok: boolean }>(`/devices/${id}`, { method: "DELETE" });
 }

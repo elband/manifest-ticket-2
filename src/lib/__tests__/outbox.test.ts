@@ -7,9 +7,14 @@ vi.mock("../api/client", () => ({
   apiPushScan: (...args: unknown[]) => pushMock(...args),
   apiDecideIdentity: (...args: unknown[]) => decideMock(...args),
   getToken: () => tokenRef.value,
+  isAuthed: () => Boolean(tokenRef.value || deviceRef.value.token),
   getApiUser: () => null,
+  getDeviceState: () => deviceRef.value,
 }));
 const tokenRef: { value: string | null } = { value: "tok" };
+const deviceRef: { value: { status: string; station?: string; token?: string } } = {
+  value: { status: "unregistered" },
+};
 
 import {
   classifyPushError,
@@ -20,6 +25,7 @@ import {
   getApiOutboxSummary,
   type ApiOutboxItem,
 } from "../api/outbox";
+import { setSession } from "../storage";
 import type { ScanEvent } from "../types";
 
 function installFakeWindow() {
@@ -119,6 +125,7 @@ describe("flushApiOutbox saat jaringan terganggu", () => {
   beforeEach(() => {
     installFakeWindow();
     tokenRef.value = "tok";
+    deviceRef.value = { status: "unregistered" };
     pushMock.mockReset();
   });
   afterEach(() => {
@@ -170,6 +177,22 @@ describe("flushApiOutbox saat jaringan terganggu", () => {
     await flushApiOutbox();
 
     expect(getApiOutboxSummary().online).toBe(false);
+  });
+
+  it("tanpa token petugas tapi perangkat diizinkan → tetap terkirim atas nama petugas sesi", async () => {
+    tokenRef.value = null;
+    deviceRef.value = { status: "approved", station: "SCP1", token: "dev-tok" };
+    setSession({ id: "op1", email: "a@b", name: "Andi", role: "security" });
+    enqueueScanPush(scan("scn_a"));
+    pushMock.mockResolvedValue({ ok: true, status: 201, data: {} });
+
+    expect(getApiOutboxSummary().needsLogin).toBe(false);
+    await flushApiOutbox();
+
+    const fields = pushMock.mock.calls[0][0] as { operatorId: string; station: string };
+    expect(fields.operatorId).toBe("op1");
+    expect(fields.station).toBe("SCP1");
+    expect(getApiOutboxSummary().total).toBe(0);
   });
 
   it("token kedaluwarsa (401) → menunggu login ulang tanpa menghabiskan jatah", async () => {

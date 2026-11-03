@@ -31,6 +31,10 @@ export class AuthController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   me(@Req() req: { user: JwtPayload }) {
+    if (req.user.kind === "device") {
+      const { sub, name, role, station } = req.user;
+      return { id: sub, email: "", name: name ?? "Perangkat", role, station, kind: "device" };
+    }
     return this.auth.me(req.user.sub);
   }
 }

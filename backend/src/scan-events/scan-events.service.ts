@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
@@ -18,10 +18,28 @@ export class ScanEventsService {
    * Idempotent push. Kalau eventId sudah ada, return existing (HTTP 200) supaya
    * outbox client bisa hapus item dari queue tanpa duplikasi.
    */
+  /**
+   * Scan yang dikirim dengan token PERANGKAT: pelakunya petugas yang login PIN
+   * di perangkat itu (`dto.operatorId`), station mengikuti penetapan admin.
+   */
+  async pushFromDevice(device: JwtPayload, dto: PushScanDto, facePhotoPath: string | null) {
+    if (!dto.operatorId) {
+      throw new BadRequestException("Scan dari perangkat wajib menyertakan petugas (operatorId).");
+    }
+    const op = await this.prisma.operator.findUnique({
+      where: { id: dto.operatorId },
+      select: { id: true },
+    });
+    if (!op) throw new BadRequestException("Petugas pada scan ini tidak dikenal server.");
+    const station = device.station ?? dto.station;
+    return this.push(op.id, { ...dto, station }, facePhotoPath, device.sub);
+  }
+
   async push(
     operatorId: string,
     dto: PushScanDto,
     facePhotoPath: string | null,
+    deviceId: string | null = null,
   ) {
     const existing = await this.prisma.scanEvent.findUnique({
       where: { eventId: dto.eventId },
@@ -77,6 +95,7 @@ export class ScanEventsService {
           ktpCapturedAt: dto.ktpCapturedAt ? new Date(dto.ktpCapturedAt) : null,
           flightId,
           operatorId,
+          deviceId,
         },
       });
     } catch (e) {

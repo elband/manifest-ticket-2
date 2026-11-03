@@ -31,6 +31,8 @@ import {
   PanelLeft,
   Ticket,
   UserCog,
+  ScrollText,
+  MonitorSmartphone,
 } from "lucide-react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
@@ -143,6 +145,12 @@ const NAV_SECTIONS: NavSection[] = [
         icon: UserCog,
         roles: ["admin"],
       },
+      {
+        href: "/admin/devices",
+        labelKey: "nav.adminDevices",
+        icon: MonitorSmartphone,
+        roles: ["admin"],
+      },
     ],
   },
   {
@@ -152,6 +160,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/seeders/boarding-pass",
         labelKey: "nav.boardingPassSeeder",
         icon: Ticket,
+        roles: ["admin"],
+      },
+      {
+        href: "/admin/activity-log",
+        labelKey: "nav.activityLog",
+        icon: ScrollText,
         roles: ["admin"],
       },
       {
@@ -702,6 +716,8 @@ function breadcrumbTail(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/radar")) return t("nav.radar");
   if (pathname.startsWith("/connect")) return t("nav.connect");
   if (pathname.startsWith("/admin/officers")) return t("nav.adminOfficers");
+  if (pathname.startsWith("/admin/devices")) return t("nav.adminDevices");
+  if (pathname.startsWith("/admin/activity-log")) return t("nav.activityLog");
   if (pathname.startsWith("/admin/scans")) return t("nav.adminScans");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
   if (pathname.startsWith("/insights")) return t("nav.insights");
@@ -721,6 +737,8 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/radar")) return t("nav.radar");
   if (pathname.startsWith("/connect")) return t("nav.connect");
   if (pathname.startsWith("/admin/officers")) return t("nav.adminOfficers");
+  if (pathname.startsWith("/admin/devices")) return t("nav.adminDevices");
+  if (pathname.startsWith("/admin/activity-log")) return t("nav.activityLog");
   if (pathname.startsWith("/admin/scans")) return t("nav.adminScans");
   if (pathname.startsWith("/analytics")) return t("nav.analytics");
   if (pathname.startsWith("/insights")) return t("nav.insights");

@@ -29,6 +29,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   // F-11: cek status akun tiap request — operator yang dinonaktifkan/dihapus
   // langsung kehilangan akses (tanpa harus menunggu token kedaluwarsa).
   async validate(payload: JwtPayload) {
+    if (payload.kind === "device") return this.validateDevice(payload);
     const op = await this.prisma.operator.findUnique({
       where: { id: payload.sub },
       select: { active: true },
@@ -37,5 +38,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException("Akun nonaktif atau tidak ditemukan.");
     }
     return payload; // attached as req.user
+  }
+
+  // Token perangkat: izin yang dicabut admin langsung berlaku. Station & nama
+  // diambil dari DB supaya perubahan admin terasa tanpa menunggu token baru.
+  private async validateDevice(payload: JwtPayload): Promise<JwtPayload> {
+    const device = await this.prisma.device.findUnique({
+      where: { id: payload.sub },
+      select: { status: true, station: true, name: true, lastSeenAt: true },
+    });
+    if (!device || device.status !== "approved") {
+      throw new UnauthorizedException("Izin perangkat dicabut atau perangkat tidak dikenal.");
+    }
+    // "Terakhir aktif" cukup diperbarui maksimal 1x/menit (hemat tulis DB).
+    if (!device.lastSeenAt || Date.now() - device.lastSeenAt.getTime() > 60_000) {
+      void this.prisma.device
+        .update({ where: { id: payload.sub }, data: { lastSeenAt: new Date() } })
+        .catch(() => {});
+    }
+    return { ...payload, station: device.station, name: device.name };
   }
 }

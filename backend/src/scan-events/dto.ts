@@ -80,6 +80,16 @@ export class PushScanDto {
   @MaxLength(32)
   station!: string;
 
+  @ApiPropertyOptional({
+    description:
+      "Petugas yang melakukan scan — WAJIB bila dikirim dengan token perangkat; " +
+      "diabaikan untuk token petugas (pelaku = pemilik token).",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  operatorId?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

@@ -95,3 +95,52 @@ describe("ScanEventsService.decideIdentity", () => {
     expect(prisma.scanEvent.update).not.toHaveBeenCalled();
   });
 });
+
+describe("ScanEventsService.pushFromDevice (token perangkat)", () => {
+  const device = { sub: "dev1", kind: "device", role: "operator", station: "SCP1" } as never;
+  const dto = (over: Record<string, unknown> = {}) =>
+    ({
+      eventId: "ev9",
+      rawBarcode: "M1X",
+      resultStatus: "INVALID_BARCODE",
+      scannedAt: "2026-11-03T04:30:00.000Z",
+      station: "UNKNOWN",
+      operatorId: "op1",
+      ...over,
+    }) as never;
+
+  function setup() {
+    const prisma = {
+      operator: { findUnique: jest.fn().mockResolvedValue({ id: "op1" }) },
+      scanEvent: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation(({ data }) => data),
+      },
+    };
+    return { prisma, svc: new ScanEventsService(prisma as never) };
+  }
+
+  it("petugas dari body, station & deviceId dari perangkat", async () => {
+    const { prisma, svc } = setup();
+    await svc.pushFromDevice(device, dto(), null);
+    expect(prisma.scanEvent.create.mock.calls[0][0].data).toMatchObject({
+      operatorId: "op1",
+      station: "SCP1",
+      deviceId: "dev1",
+    });
+  });
+
+  it("tanpa operatorId → 400", async () => {
+    const { svc } = setup();
+    await expect(svc.pushFromDevice(device, dto({ operatorId: undefined }), null)).rejects.toThrow(
+      "wajib menyertakan petugas",
+    );
+  });
+
+  it("operatorId tak dikenal → 400, tidak disimpan", async () => {
+    const { prisma, svc } = setup();
+    prisma.operator.findUnique.mockResolvedValueOnce(null);
+    await expect(svc.pushFromDevice(device, dto(), null)).rejects.toThrow("tidak dikenal");
+    expect(prisma.scanEvent.create).not.toHaveBeenCalled();
+  });
+});

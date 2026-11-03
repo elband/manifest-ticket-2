@@ -6,10 +6,12 @@ import { ConfirmProvider } from "@/components/ui/ConfirmDialog";
 import { ThemeProvider } from "./ThemeProvider";
 import { startAutoFlush } from "@/lib/sikerenOutbox";
 import { startApiAutoFlush } from "@/lib/api/outbox";
+import { startDeviceAuth } from "@/lib/api/device";
 import { startSettingsSync } from "@/lib/settingsSync";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
+    const stopDevice = startDeviceAuth();
     const stop = startAutoFlush();
     const stopApi = startApiAutoFlush();
     const stopSettings = startSettingsSync();
@@ -17,6 +19,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       stop();
       stopApi();
       stopSettings();
+      stopDevice();
     };
   }, []);
   return (

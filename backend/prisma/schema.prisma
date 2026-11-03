@@ -109,6 +109,10 @@ model ScanEvent {
   operatorId       String
   operator         Operator @relation(fields: [operatorId], references: [id])
 
+  // Perangkat (kiosk) yang mengirim scan — null bila dikirim dgn token petugas.
+  deviceId         String?
+  device           Device?  @relation(fields: [deviceId], references: [id])
+
   createdAt        DateTime @default(now())
 
   @@index([station, scannedAt])
@@ -116,6 +120,31 @@ model ScanEvent {
   @@index([resultStatus])
   @@index([flightNumber]) // filter list by flightNumber (P-11)
   @@index([scannedAt]) // filter/urut tanggal lintas-station (P-11)
+  @@index([deviceId])
+}
+
+// Perangkat (kiosk/laptop) yang diizinkan admin mengakses backend tanpa login
+// petugas. Perangkat membuat secret acak sendiri lalu mendaftar (status
+// "pending"); admin mengizinkan + menentukan station → perangkat menukar
+// secret-nya dengan token JWT perangkat. Status: pending | approved | revoked.
+model Device {
+  id           String    @id @default(cuid())
+  name         String
+  station      String?
+  status       String    @default("pending")
+  secretHash   String    @unique // sha256(secret) — secret 256-bit, tak perlu bcrypt
+  code         String    // kode singkat yang tampil di perangkat, dicocokkan admin
+  userAgent    String?   @db.VarChar(255)
+  lastIp       String?
+  lastSeenAt   DateTime?
+  approvedAt   DateTime?
+  approvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  scanEvents   ScanEvent[]
+
+  @@index([status])
 }
 
 // Pengaturan aplikasi frontend yang berlaku GLOBAL untuk semua perangkat.
@@ -126,4 +155,33 @@ model AppSetting {
   data        Json
   updatedById String?
   updatedAt   DateTime @updatedAt
+}
+
+// Jejak audit tindakan pengguna di server (login, kelola petugas/penerbangan,
+// ubah pengaturan, dst.) — dicatat otomatis oleh ActivityLogInterceptor.
+// Sengaja TANPA relasi ke Operator: log harus tetap utuh walau petugasnya
+// dihapus, jadi identitas pelaku disalin (snapshot) saat kejadian.
+model ActivityLog {
+  id            String   @id @default(cuid())
+  at            DateTime @default(now())
+  operatorId    String?
+  operatorName  String?
+  operatorEmail String?
+  operatorRole  String?
+  action        String   // mis. "operator.create", "auth.login_failed"
+  category      String   // auth | operator | flight | settings | system
+  description   String   @db.VarChar(500)
+  method        String
+  path          String   @db.VarChar(255)
+  statusCode    Int
+  success       Boolean
+  targetId      String?
+  ip            String?
+  userAgent     String?  @db.VarChar(255)
+  durationMs    Int
+  meta          Json?
+
+  @@index([at])
+  @@index([operatorId, at])
+  @@index([category, at])
 }

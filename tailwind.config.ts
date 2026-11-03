@@ -219,6 +219,11 @@ const config: Config = {
           "0%": { transform: "translateX(0)" },
           "100%": { transform: "translateX(-50%)" },
         },
+        // Laci riwayat scan kiosk masuk dari kanan.
+        "drawer-in": {
+          "0%": { transform: "translateX(100%)" },
+          "100%": { transform: "translateX(0)" },
+        },
       },
       animation: {
         "fade-up": "fade-up 0.5s ease-out both",
@@ -248,7 +253,9 @@ const config: Config = {
         "avatar-float": "avatar-float 4s ease-in-out infinite",
         "glow-breath": "glow-breath 3.2s ease-in-out infinite",
         "dot-pulse": "dot-pulse 2.2s ease-in-out infinite",
-        marquee: "marquee 38s linear infinite",      },
+        marquee: "marquee 38s linear infinite",
+        "drawer-in": "drawer-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both",
+      },
     },
   },
   plugins: [],

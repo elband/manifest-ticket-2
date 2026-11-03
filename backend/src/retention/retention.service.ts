@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/commo
 import { ConfigService } from "@nestjs/config";
 import { existsSync } from "node:fs";
 import { unlink } from "node:fs/promises";
+import { ActivityLogsService } from "../activity-logs/activity-logs.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
@@ -9,6 +10,9 @@ import { PrismaService } from "../prisma/prisma.service";
  * yang lebih lama dari batas retensi (`FACE_RETENTION_DAYS`, default 30) lalu
  * mengosongkan `facePhotoPath`. Record scan tetap utuh untuk audit — hanya
  * biometriknya yang dimusnahkan (prinsip minimisasi & retensi).
+ *
+ * Sekalian memangkas log aktivitas lebih tua dari `ACTIVITY_LOG_RETENTION_DAYS`
+ * (default 180) agar tabel audit tidak tumbuh tanpa batas.
  *
  * Tanpa dependensi penjadwal eksternal: jalan sekali ~10 dtk setelah boot, lalu
  * tiap 12 jam (timer di-`unref` agar tidak menahan proses saat shutdown).
@@ -21,6 +25,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private prisma: PrismaService,
     private cfg: ConfigService,
+    private activityLogs: ActivityLogsService,
   ) {}
 
   onModuleInit() {
@@ -38,11 +43,23 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     return Number.isFinite(v) && v > 0 ? v : 30;
   }
 
+  private activityRetentionDays(): number {
+    const v = Number(this.cfg.get<string>("ACTIVITY_LOG_RETENTION_DAYS") ?? 180);
+    return Number.isFinite(v) && v > 0 ? v : 180;
+  }
+
   private async runSafe() {
     try {
       await this.purgeOldFacePhotos();
     } catch (e) {
       this.logger.error(`Retensi gagal: ${(e as Error).message}`);
+    }
+    try {
+      const days = this.activityRetentionDays();
+      const n = await this.activityLogs.purgeOlderThan(days);
+      if (n > 0) this.logger.log(`Retensi: ${n} log aktivitas >${days} hari dihapus.`);
+    } catch (e) {
+      this.logger.error(`Retensi log aktivitas gagal: ${(e as Error).message}`);
     }
   }
 

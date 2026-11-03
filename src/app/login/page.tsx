@@ -21,7 +21,12 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { ensureSeed, getSession, setSession } from "@/lib/storage";
 import { login } from "@/lib/auth";
-import { apiLogin } from "@/lib/api/client";
+import {
+  apiLogin,
+  getDeviceState,
+  subscribeDevice,
+  type DeviceState,
+} from "@/lib/api/client";
 import { serverLoginError, signInWithPin } from "@/lib/pinLogin";
 import { saveSettings } from "@/lib/settings";
 import type { UserRole } from "@/lib/types";
@@ -317,6 +322,8 @@ export default function LoginPage() {
                   );
                 })}
               </div>
+
+              <DeviceAccessNote />
 
               {authMode === "pin" ? (
                 <form onSubmit={submit} className="mt-5 space-y-4">
@@ -753,5 +760,42 @@ function FloatingBadges() {
         </div>
       ))}
     </>
+  );
+}
+
+/**
+ * Status izin perangkat ini ke server. Selama belum diizinkan admin, kodenya
+ * ditampilkan supaya bisa dicocokkan di menu Perangkat.
+ */
+function DeviceAccessNote() {
+  const [device, setDevice] = useState<DeviceState | null>(null);
+  useEffect(() => {
+    setDevice(getDeviceState());
+    return subscribeDevice(setDevice);
+  }, []);
+  if (!device || device.status === "approved") return null;
+  const revoked = device.status === "revoked";
+  return (
+    <div
+      className={`mt-4 rounded-xl px-3 py-2.5 text-xs ring-1 ${
+        revoked
+          ? "bg-rose-500/15 text-rose-100 ring-rose-400/30"
+          : "bg-amber-400/15 text-amber-100 ring-amber-300/30"
+      }`}
+    >
+      <p className="font-bold">
+        {revoked ? "Izin perangkat ini dicabut admin" : "Perangkat ini belum diizinkan admin"}
+      </p>
+      <p className="mt-0.5 text-white/75">
+        {revoked
+          ? "Hubungi admin untuk mengizinkannya kembali di menu Perangkat."
+          : "Minta admin mengizinkan perangkat ini di menu Perangkat dengan kode:"}{" "}
+        {!revoked && (
+          <span className="font-mono text-sm font-black tracking-widest text-white">
+            {device.code ?? "…"}
+          </span>
+        )}
+      </p>
+    </div>
   );
 }

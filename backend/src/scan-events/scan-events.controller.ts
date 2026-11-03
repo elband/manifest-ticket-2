@@ -68,6 +68,7 @@ export class ScanEventsController {
     @UploadedFile() facePhoto?: Express.Multer.File,
   ) {
     const path = facePhoto ? facePhoto.path : null;
+    if (req.user.kind === "device") return this.svc.pushFromDevice(req.user, dto, path);
     return this.svc.push(req.user.sub, dto, path);
   }
 

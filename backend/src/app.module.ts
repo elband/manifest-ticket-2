@@ -2,8 +2,10 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerModule } from "@nestjs/throttler";
+import { ActivityLogsModule } from "./activity-logs/activity-logs.module";
 import { AppSettingsModule } from "./app-settings/app-settings.module";
 import { AuthModule } from "./auth/auth.module";
+import { DevicesModule } from "./devices/devices.module";
 import { UserThrottlerGuard } from "./common/user-throttler.guard";
 import { FacePhotosModule } from "./face-photos/face-photos.module";
 import { FlightsModule } from "./flights/flights.module";
@@ -26,6 +28,8 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
     ScanEventsModule,
     AppSettingsModule,
     FacePhotosModule,
+    ActivityLogsModule,
+    DevicesModule,
   ],
   controllers: [HealthController],
   // F-02: aktifkan ThrottlerGuard secara GLOBAL (sebelumnya ThrottlerModule

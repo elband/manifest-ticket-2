@@ -42,6 +42,8 @@ import {
   Delete,
   CornerDownLeft,
   AlertCircle,
+  History,
+  Search,
 } from "lucide-react";
 import { useCountUp } from "@/lib/useCountUp";
 import {
@@ -71,6 +73,7 @@ import {
   getSession,
   getScanEvents,
   getFlights,
+  getUsers,
   updateScanEvent,
 } from "@/lib/storage";
 import {
@@ -95,6 +98,12 @@ import {
   subscribeApiOutbox,
   type ApiOutboxSummary,
 } from "@/lib/api/outbox";
+import {
+  getDeviceState,
+  isAuthed,
+  subscribeDevice,
+  type DeviceState,
+} from "@/lib/api/client";
 import { logout } from "@/lib/auth";
 import { signInWithPin } from "@/lib/pinLogin";
 import {
@@ -366,6 +375,13 @@ export default function KioskPage() {
     }),
     [rawSettings],
   );
+  // Status izin perangkat — chip server tetap tampil selama belum diizinkan,
+  // supaya kode perangkat terlihat untuk dicocokkan admin.
+  const [deviceStatus, setDeviceStatus] = React.useState<DeviceState["status"]>("approved");
+  React.useEffect(() => {
+    setDeviceStatus(getDeviceState().status);
+    return subscribeDevice((s) => setDeviceStatus(s.status));
+  }, []);
   const [value, setValue] = React.useState("");
   const [last, setLast] = React.useState<LastResult | null>(null);
   const [recent, setRecent] = React.useState<ScanEvent[]>([]);
@@ -394,15 +410,19 @@ export default function KioskPage() {
   // Ganti petugas lewat PIN tanpa keluar kiosk. Selama modal PIN terbuka,
   // input scanner tersembunyi dijeda supaya digit PIN tidak terkirim sebagai scan.
   const [officerSwitchOpen, setOfficerSwitchOpen] = React.useState(false);
+  // Riwayat scan (laci kanan). Kolom cari di dalamnya juga butuh keyboard,
+  // jadi scanner dijeda dengan cara yang sama seperti keypad PIN.
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const scanPaused = officerSwitchOpen || historyOpen;
   const scanPausedRef = React.useRef(false);
   React.useEffect(() => {
-    scanPausedRef.current = officerSwitchOpen;
-    if (officerSwitchOpen) {
+    scanPausedRef.current = scanPaused;
+    if (scanPaused) {
       setValue("");
     } else {
       setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [officerSwitchOpen]);
+  }, [scanPaused]);
   // Agen lokal Lubuntu (kiosk-agent/) — aksi yang didukungnya di perangkat
   // ini. Tanpa agen: kosong → "Matikan" & "Perkecil" disembunyikan.
   const [agentActions, setAgentActions] = React.useState<KioskAgentAction[]>([]);
@@ -658,12 +678,13 @@ export default function KioskPage() {
         // Modal PIN menutup dirinya sendiri lewat Escape (jangan keluar kiosk).
         if (ktpFlowOpen || officerSwitchOpen) return;
         if (modalOpen) setModalOpen(false);
+        else if (historyOpen) setHistoryOpen(false);
         else router.push("/scan");
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, modalOpen, ktpFlowOpen, officerSwitchOpen]);
+  }, [router, modalOpen, ktpFlowOpen, officerSwitchOpen, historyOpen]);
 
   React.useEffect(() => {
     return () => {
@@ -1264,7 +1285,7 @@ export default function KioskPage() {
         <div className="flex shrink-0 items-center gap-2">
           <ScannerStatusPill mode={inputMode} />
           <HeaderClock now={now} />
-          {settings.apiSyncEnabled && (
+          {(settings.apiSyncEnabled || deviceStatus !== "approved") && (
             <ServerSyncChip
               onRelogin={() => {
                 // Antrean tetap tersimpan: logout hanya menghapus sesi lokal.
@@ -1326,9 +1347,9 @@ export default function KioskPage() {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
-        // Nonaktif selama keypad PIN terbuka: input tak bisa difokus/diketik,
-        // jadi digit PIN tidak pernah terkirim sebagai scan.
-        disabled={officerSwitchOpen}
+        // Nonaktif selama keypad PIN / riwayat terbuka: input tak bisa
+        // difokus/diketik, jadi ketikan di sana tidak terkirim sebagai scan.
+        disabled={scanPaused}
         autoComplete="off"
         spellCheck={false}
         aria-label="Scanner input"
@@ -1344,6 +1365,7 @@ export default function KioskPage() {
           exemptActive={exemptNext}
           onToggleExempt={() => setExemptNext(!exemptNextRef.current)}
         />
+        <HistoryEdgeTab count={todayScans.length} onOpen={() => setHistoryOpen(true)} />
       </main>
 
       {/* Papan keberangkatan (flight boarding + statistik shift untuk AVSEC). */}
@@ -1353,9 +1375,6 @@ export default function KioskPage() {
         now={now}
         settings={settings}
         highlightFlightId={last?.event.flightId ?? null}
-        onMore={() =>
-          router.push(session?.role === "security" ? "/scan" : "/scan-events")
-        }
       />
 
       {/* Ticker info berjalan (bawah) — pengingat keamanan/instruksi. */}
@@ -1517,6 +1536,14 @@ export default function KioskPage() {
           </Modal>
         );
       })()}
+
+      <ScanHistoryDrawer
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        scans={todayScans}
+        flights={todayFlights}
+        currentOfficer={session}
+      />
 
       <OfficerSwitchModal
         open={officerSwitchOpen}
@@ -1852,14 +1879,12 @@ function DepartureBoard({
   now,
   settings,
   highlightFlightId,
-  onMore,
 }: {
   flights: Flight[];
   scans: ScanEvent[];
   now: Date;
   settings: AppSettings;
   highlightFlightId: string | null;
-  onMore: () => void;
 }) {
   const cards: FlightCardData[] = React.useMemo(() => {
     const validScans = scans.filter(
@@ -1947,7 +1972,7 @@ function DepartureBoard({
   return (
     <section className="relative z-20 shrink-0 bg-kiosk-asphalt text-white">
       <div className="flex items-stretch gap-4 px-4 py-3 sm:px-6">
-        <div className="flex w-[118px] shrink-0 flex-col justify-between gap-2 sm:w-[180px]">
+        <div className="flex w-[118px] shrink-0 flex-col justify-center sm:w-[180px]">
           <div className="leading-none">
             <h2 className="font-board text-[22px] font-semibold text-kiosk-sign-glow sm:text-[26px]">
               Sedang boarding
@@ -1961,13 +1986,6 @@ function DepartureBoard({
               )}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onMore}
-            className="self-start text-[13px] font-semibold text-white/75 underline-offset-4 hover:text-white hover:underline"
-          >
-            Lihat semua scan
-          </button>
         </div>
 
         <div ref={rowRef} className="flex min-w-0 flex-1 items-stretch gap-3 overflow-hidden">
@@ -2234,6 +2252,374 @@ function HardRefreshButton() {
     >
       <RefreshCw className={cn("h-5 w-5", busy && "animate-spin")} />
     </button>
+  );
+}
+
+/* ─────────────── Riwayat scan (laci kanan bergaya papan keberangkatan) ─────────────── */
+
+/**
+ * Tab tarik di tepi kanan aula — pegangan laci riwayat yang muncul dari sisi
+ * yang sama. Teks vertikal supaya tak memakan ruang panel scanner.
+ */
+function HistoryEdgeTab({ count, onOpen }: { count: number; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Buka riwayat scan, ${count} scan hari ini`}
+      className="group absolute right-0 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-3 rounded-l-xl bg-kiosk-asphalt py-4 pl-3 pr-2.5 text-white shadow-[-10px_0_30px_-12px_rgba(30,34,40,0.6)] ring-1 ring-kiosk-line transition hover:pl-4 hover:pr-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-kiosk-sign-glow motion-reduce:transition-none"
+    >
+      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-kiosk-sign">
+        <History className="h-5 w-5" />
+      </span>
+      <span className="rotate-180 text-[15px] font-semibold tracking-wide [writing-mode:vertical-rl]">
+        Riwayat scan
+      </span>
+      <span className="min-w-[2.25rem] rounded-md bg-white/10 px-1.5 py-1 text-center font-board text-[18px] font-semibold leading-none tabular-nums text-kiosk-sign-glow">
+        {count}
+      </span>
+    </button>
+  );
+}
+
+type HistoryGroup = "valid" | "duplicate" | "rejected";
+type HistoryFilter = "all" | HistoryGroup;
+
+const HISTORY_PAGE = 100;
+// Kiosk tak boleh tertahan di riwayat: laci menutup sendiri bila didiamkan.
+const HISTORY_IDLE_MS = 60_000;
+
+function historyGroupOf(status: ScanResultStatus): HistoryGroup {
+  if (status === "VALID_FLIGHT") return "valid";
+  if (status === "DUPLICATE_SCAN") return "duplicate";
+  return "rejected";
+}
+
+const HISTORY_GROUP_META: Record<HistoryGroup, { label: string; dot: string; text: string }> = {
+  valid: { label: "Valid", dot: "bg-kiosk-go", text: "text-emerald-300" },
+  duplicate: { label: "Duplikat", dot: "bg-kiosk-hold", text: "text-amber-300" },
+  rejected: { label: "Ditolak", dot: "bg-kiosk-stop", text: "text-rose-300" },
+};
+
+const HISTORY_STATUS_LABEL: Record<ScanResultStatus, string> = {
+  VALID_FLIGHT: "Valid",
+  DUPLICATE_SCAN: "Duplikat",
+  FLIGHT_NOT_TODAY: "Bukan hari ini",
+  FLIGHT_NOT_ACTIVE: "Flight tidak aktif",
+  UNKNOWN_FLIGHT: "Flight tak dikenal",
+  INVALID_BARCODE: "Barcode tidak valid",
+  KTP_MISMATCH: "KTP tidak cocok",
+};
+
+const HISTORY_FILTERS: { key: HistoryFilter; label: string; dot: string }[] = [
+  { key: "all", label: "Semua", dot: "bg-kiosk-sign-glow" },
+  { key: "valid", label: "Valid", dot: HISTORY_GROUP_META.valid.dot },
+  { key: "duplicate", label: "Duplikat", dot: HISTORY_GROUP_META.duplicate.dot },
+  { key: "rejected", label: "Ditolak", dot: HISTORY_GROUP_META.rejected.dot },
+];
+
+function ScanHistoryDrawer({
+  open,
+  onClose,
+  scans,
+  flights,
+  currentOfficer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  scans: ScanEvent[];
+  flights: Flight[];
+  /** Petugas yang login (bisa akun server yang tak ada di daftar lokal). */
+  currentOfficer: SessionUser | null;
+}) {
+  const [filter, setFilter] = React.useState<HistoryFilter>("all");
+  const [query, setQuery] = React.useState("");
+  const [limit, setLimit] = React.useState(HISTORY_PAGE);
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setFilter("all");
+    setQuery("");
+    setLimit(HISTORY_PAGE);
+    setTimeout(() => closeRef.current?.focus(), 0);
+  }, [open]);
+
+  // Tutup otomatis setelah didiamkan; setiap sentuhan/ketikan/gulir mereset.
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+  const [activity, setActivity] = React.useState(0);
+  const touch = () => setActivity((n) => n + 1);
+  React.useEffect(() => {
+    if (!open) return;
+    const t = window.setTimeout(() => onCloseRef.current(), HISTORY_IDLE_MS);
+    return () => window.clearTimeout(t);
+  }, [open, activity]);
+
+  const flightById = React.useMemo(
+    () => new Map(flights.map((f) => [f.id, f])),
+    [flights],
+  );
+  // scannedBy berisi email (atau id) petugas → tampilkan namanya bila dikenal.
+  const officerName = React.useMemo(() => {
+    const m = new Map<string, string>();
+    if (!open) return m;
+    for (const u of getUsers()) {
+      m.set(u.email.toLowerCase(), u.name);
+      m.set(u.id, u.name);
+    }
+    if (currentOfficer) {
+      m.set(currentOfficer.email.toLowerCase(), currentOfficer.name);
+      m.set(currentOfficer.id, currentOfficer.name);
+    }
+    return m;
+  }, [open, currentOfficer]);
+
+  const sorted = React.useMemo(
+    () => [...scans].sort((a, b) => b.scannedAt.localeCompare(a.scannedAt)),
+    [scans],
+  );
+  const counts = React.useMemo(() => {
+    const c: Record<HistoryFilter, number> = { all: sorted.length, valid: 0, duplicate: 0, rejected: 0 };
+    for (const e of sorted) c[historyGroupOf(e.resultStatus)]++;
+    return c;
+  }, [sorted]);
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sorted.filter((e) => {
+      if (filter !== "all" && historyGroupOf(e.resultStatus) !== filter) return false;
+      if (!q) return true;
+      return [
+        e.parsedPassengerName,
+        e.parsedFlightNumber,
+        e.parsedPnr,
+        e.parsedSeatNumber,
+        e.parsedTicketNumber,
+      ].some((v) => v?.toLowerCase().includes(q));
+    });
+  }, [sorted, filter, query]);
+
+  // Kelompokkan per jam (daftar sudah urut terbaru → terlama).
+  const shown = filtered.slice(0, limit);
+  const groups: { hour: number; items: ScanEvent[] }[] = [];
+  for (const e of shown) {
+    const h = new Date(e.scannedAt).getHours();
+    const g = groups[groups.length - 1];
+    if (g && g.hour === h) g.items.push(e);
+    else groups.push({ hour: h, items: [e] });
+  }
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex justify-end font-sign"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="scan-history-title"
+    >
+      <div
+        aria-hidden
+        onClick={onClose}
+        className="absolute inset-0 bg-kiosk-asphalt/60 backdrop-blur-[2px] animate-fade-in motion-reduce:animate-none"
+      />
+      <aside
+        onPointerDown={touch}
+        onKeyDown={touch}
+        onScrollCapture={touch}
+        className="relative flex h-full w-full max-w-[620px] flex-col bg-kiosk-asphalt text-white shadow-[-24px_0_60px_-20px_rgba(0,0,0,0.6)] animate-drawer-in motion-reduce:animate-none"
+      >
+        <header className="flex shrink-0 items-center gap-3 bg-kiosk-sign px-5 py-3.5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white text-kiosk-sign">
+            <History className="h-6 w-6" />
+          </span>
+          <div className="min-w-0 flex-1 leading-none">
+            <h2 id="scan-history-title" className="truncate text-[21px] font-bold">
+              Riwayat scan hari ini
+            </h2>
+            <p className="mt-1 text-[14px] text-white/75">
+              {counts.all} scan, terbaru di atas
+            </p>
+          </div>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup riwayat"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-white/15 transition hover:bg-white/25"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="shrink-0 space-y-3 border-b border-kiosk-line px-5 py-4">
+          <div className="grid grid-cols-4 gap-2" role="tablist" aria-label="Saring status">
+            {HISTORY_FILTERS.map((f) => {
+              const active = filter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => {
+                    setFilter(f.key);
+                    setLimit(HISTORY_PAGE);
+                  }}
+                  className={cn(
+                    "flex flex-col items-start rounded-md px-3 py-2 text-left ring-1 transition",
+                    active
+                      ? "bg-kiosk-cell ring-2 ring-kiosk-sign-glow"
+                      : "ring-kiosk-line hover:bg-kiosk-cell/60",
+                  )}
+                >
+                  <span className="font-board text-[28px] font-semibold leading-none tabular-nums">
+                    {counts[f.key]}
+                  </span>
+                  <span className="mt-1 flex items-center gap-1.5 text-[13px] text-white/70">
+                    <span className={cn("h-2 w-2 rounded-[2px]", f.dot)} />
+                    {f.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <label className="relative block">
+            <span className="sr-only">Cari riwayat scan</span>
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setLimit(HISTORY_PAGE);
+              }}
+              placeholder="Cari nama, flight, PNR, atau kursi"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-11 w-full rounded-md bg-kiosk-cell pl-9 pr-3 text-[15px] text-white ring-1 ring-kiosk-line placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-kiosk-sign-glow"
+            />
+          </label>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+          {filtered.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
+              <History className="h-10 w-10 text-white/25" />
+              <p className="text-[16px] font-semibold text-white/80">
+                {counts.all === 0 ? "Belum ada scan hari ini" : "Tidak ada scan yang cocok"}
+              </p>
+              <p className="text-[14px] text-white/50">
+                {counts.all === 0
+                  ? "Scan boarding pass pertama akan muncul di sini."
+                  : "Ubah kata kunci atau pilih status lain."}
+              </p>
+            </div>
+          ) : (
+            groups.map((g) => {
+              const hh = String(g.hour).padStart(2, "0");
+              return (
+                <section key={g.hour} aria-label={`Jam ${hh}.00 sampai ${hh}.59`}>
+                  <h3 className="sticky top-0 z-10 -mx-5 flex items-baseline justify-between bg-kiosk-asphalt/95 px-5 pb-2 pt-4 backdrop-blur">
+                    <span className="font-board text-[18px] font-semibold tabular-nums text-kiosk-sign-glow">
+                      {hh}.00–{hh}.59
+                    </span>
+                    <span className="text-[12px] tabular-nums text-white/50">
+                      {g.items.length} scan
+                    </span>
+                  </h3>
+                  <ol className="space-y-1.5">
+                    {g.items.map((e) => (
+                      <HistoryRow
+                        key={e.id}
+                        e={e}
+                        flight={e.flightId ? flightById.get(e.flightId) ?? null : null}
+                        officer={
+                          officerName.get(e.scannedBy.toLowerCase()) ??
+                          officerName.get(e.scannedBy) ??
+                          e.scannedBy.split("@")[0]
+                        }
+                      />
+                    ))}
+                  </ol>
+                </section>
+              );
+            })
+          )}
+
+          {filtered.length > limit && (
+            <button
+              type="button"
+              onClick={() => setLimit((l) => l + HISTORY_PAGE)}
+              className="mt-4 w-full rounded-md py-3 text-[14px] font-semibold text-white/80 ring-1 ring-kiosk-line transition hover:bg-kiosk-cell"
+            >
+              Tampilkan {Math.min(HISTORY_PAGE, filtered.length - limit)} scan lagi
+            </button>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function HistoryRow({
+  e,
+  flight,
+  officer,
+}: {
+  e: ScanEvent;
+  flight: Flight | null;
+  officer: string;
+}) {
+  const group = historyGroupOf(e.resultStatus);
+  const meta = HISTORY_GROUP_META[group];
+  const t = new Date(e.scannedAt);
+  const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+  const ss = String(t.getSeconds()).padStart(2, "0");
+  const details = [
+    e.parsedSeatNumber && `Kursi ${e.parsedSeatNumber}`,
+    e.parsedPnr && `PNR ${e.parsedPnr}`,
+    `oleh ${officer}`,
+  ].filter(Boolean);
+
+  return (
+    <li className="relative flex gap-3 overflow-hidden rounded-[4px] bg-kiosk-cell py-2.5 pl-4 pr-3 ring-1 ring-kiosk-line">
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", meta.dot)} />
+      <div className="w-[58px] shrink-0 pt-0.5 leading-none">
+        <span className="block font-board text-[20px] font-semibold tabular-nums">{hhmm}</span>
+        <span className="mt-1 block text-[12px] tabular-nums text-white/45">:{ss}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          {flight && <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />}
+          <span className="font-board text-[19px] font-semibold leading-none tabular-nums text-kiosk-sign-glow">
+            {flight?.flightNumber ?? e.parsedFlightNumber ?? "—"}
+          </span>
+          {flight && (
+            <span className="flex items-center gap-1 text-[13px] tabular-nums text-white/60">
+              {flight.originAirport}
+              <ArrowRight className="h-3 w-3" />
+              {flight.destinationAirport}
+            </span>
+          )}
+          {e.isTest && (
+            <span className="rounded bg-white/10 px-1.5 py-0.5 text-[11px] font-semibold text-white/70">
+              Uji
+            </span>
+          )}
+          <span className={cn("ml-auto shrink-0 text-[13px] font-semibold", meta.text)}>
+            {HISTORY_STATUS_LABEL[e.resultStatus]}
+          </span>
+        </div>
+        <p className="mt-1 truncate text-[15px] font-semibold">
+          {e.parsedPassengerName ?? "Nama tidak terbaca"}
+        </p>
+        <p className="mt-0.5 truncate text-[12.5px] text-white/55">{details.join(", ")}</p>
+        {group === "rejected" && (
+          <p className="mt-1 text-[12.5px] leading-snug text-rose-300/90">{e.message}</p>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -2732,15 +3118,34 @@ function SikerenSyncChip({
  */
 function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
   const [summary, setSummary] = React.useState<ApiOutboxSummary | null>(null);
+  const [device, setDevice] = React.useState<DeviceState | null>(null);
   React.useEffect(() => {
     const refresh = () => setSummary(getApiOutboxSummary());
     refresh();
     return subscribeApiOutbox(refresh);
   }, []);
-  if (!summary) return null;
+  React.useEffect(() => {
+    setDevice(getDeviceState());
+    return subscribeDevice(setDevice);
+  }, []);
+  if (!summary || !device) return null;
 
-  let tone: "ok" | "pending" | "failed" | "offline" | "syncing" | "login" = "ok";
-  if (summary.needsLogin) tone = "login";
+  // Perangkat belum/tidak diizinkan & tak ada petugas yang login ke server →
+  // kiriman tertahan sampai admin mengizinkan perangkat ini.
+  const deviceBlocked = device.status !== "approved" && !isAuthed();
+
+  let tone:
+    | "ok"
+    | "pending"
+    | "failed"
+    | "offline"
+    | "syncing"
+    | "login"
+    | "device"
+    | "revoked" = "ok";
+  if (deviceBlocked && device.status === "revoked") tone = "revoked";
+  else if (deviceBlocked) tone = "device";
+  else if (summary.needsLogin) tone = "login";
   else if (summary.syncing > 0) tone = "syncing";
   else if (!summary.online) tone = "offline";
   else if (summary.failed > 0) tone = "failed";
@@ -2758,11 +3163,20 @@ function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
       "bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
     syncing:
       "bg-cyan-100 text-cyan-700 ring-cyan-300 dark:bg-cyan-500/15 dark:text-cyan-300 dark:ring-cyan-500/30",
+    device:
+      "bg-amber-100 text-amber-800 ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30",
+    revoked:
+      "bg-rose-100 text-rose-700 ring-rose-300 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30",
   };
 
   const waiting = summary.pending > 0 ? ` · ${summary.pending} menunggu` : "";
+  const code = device.code ?? "…";
   const label =
-    tone === "login"
+    tone === "device"
+      ? `Menunggu izin · ${code}${waiting}`
+      : tone === "revoked"
+        ? `Perangkat dicabut${waiting}`
+        : tone === "login"
       ? `Login ulang${waiting}`
       : tone === "syncing"
         ? `Mengirim ${summary.pending}…`
@@ -2787,7 +3201,11 @@ function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
     ? new Date(summary.lastSyncedAt).toLocaleTimeString("id-ID")
     : "belum pernah";
   const hint =
-    tone === "login"
+    tone === "device"
+      ? `Perangkat ini belum diizinkan mengakses server. Minta admin mengizinkan kode ${code} di menu Perangkat. Scan tetap tersimpan dan terkirim otomatis setelah diizinkan.`
+      : tone === "revoked"
+        ? "Admin mencabut izin perangkat ini. Scan tetap tersimpan di perangkat; hubungi admin untuk mengizinkan kembali."
+        : tone === "login"
       ? "Sesi server habis. Klik untuk login ulang; data yang menunggu tetap tersimpan dan terkirim setelah login."
       : tone === "offline"
         ? "Server tidak terjangkau. Scan tetap tersimpan di perangkat dan dikirim otomatis saat koneksi pulih."
@@ -2796,9 +3214,12 @@ function ServerSyncChip({ onRelogin }: { onRelogin: () => void }) {
   return (
     <button
       type="button"
-      onClick={() =>
-        tone === "login" ? onRelogin() : void flushApiOutbox({ maxItems: 100 })
-      }
+      onClick={() => {
+        if (tone === "login") onRelogin();
+        else if (tone === "device" || tone === "revoked")
+          window.dispatchEvent(new CustomEvent("afvs:device-recheck"));
+        else void flushApiOutbox({ maxItems: 100 });
+      }}
       title={`${label} · terakhir terkirim: ${lastSync}${
         summary.lastError && tone !== "ok" ? ` · ${summary.lastError}` : ""
       }\n${hint}`}

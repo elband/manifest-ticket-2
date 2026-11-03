@@ -8,6 +8,7 @@
 
 import { facePhotoStore } from "../facePhotoStore";
 import { getSettings } from "../settings";
+import { getSession } from "../storage";
 import type { ScanEvent } from "../types";
 import {
   ScanPushFields,
@@ -15,7 +16,8 @@ import {
   apiHealth,
   apiPushScan,
   getApiUser,
-  getToken,
+  getDeviceState,
+  isAuthed,
 } from "./client";
 
 export interface ApiOutboxItem {
@@ -167,7 +169,7 @@ export function getApiOutboxSummary(): ApiOutboxSummary {
     lastError: meta.lastError,
     online,
     needsLogin:
-      isBrowser() && getSettings().apiSyncEnabled && !getToken() && pending > 0,
+      isBrowser() && getSettings().apiSyncEnabled && !isAuthed() && pending > 0,
   };
 }
 
@@ -187,6 +189,9 @@ export function subscribeApiOutbox(cb: () => void): () => void {
 }
 
 function resolveStation(): string {
+  // Perangkat yang diizinkan admin bertugas di station yang ditetapkan admin.
+  const device = getDeviceState();
+  if (device.status === "approved" && device.station) return device.station;
   const user = getApiUser();
   if (user?.station) return user.station;
   const s = getSettings();
@@ -270,6 +275,7 @@ function toPushFields(event: ScanEvent): ScanPushFields {
     message: event.message,
     scannedAt: event.scannedAt,
     station: resolveStation(),
+    operatorId: getSession()?.id ?? null,
     ktpStatus: event.ktpVerification?.status ?? null,
     ktpName: event.ktpVerification?.ocrName ?? null,
     ktpSimilarity: event.ktpVerification?.similarity ?? null,
@@ -314,7 +320,7 @@ export async function flushApiOutbox(opts?: {
   if (!isBrowser()) return { sent: 0, failed: 0, skipped: 0 };
   if (flushing) return { sent: 0, failed: 0, skipped: 0 };
   if (!getSettings().apiSyncEnabled) return { sent: 0, failed: 0, skipped: 0 };
-  if (!getToken()) return { sent: 0, failed: 0, skipped: 0 };
+  if (!isAuthed()) return { sent: 0, failed: 0, skipped: 0 };
   if (navigator.onLine === false) return { sent: 0, failed: 0, skipped: 0 };
 
   flushing = true;
@@ -340,7 +346,11 @@ export async function flushApiOutbox(opts?: {
         const faceBlob = item.faceCaptureId
           ? await facePhotoStore.get(item.faceCaptureId)
           : null;
-        result = await apiPushScan(item.fields, faceBlob);
+        // Item lama (sebelum ada operatorId) → atas nama petugas yang login sekarang.
+        const fields = item.fields.operatorId
+          ? item.fields
+          : { ...item.fields, operatorId: getSession()?.id ?? null };
+        result = await apiPushScan(fields, faceBlob);
       }
 
       queue = readQueue();
