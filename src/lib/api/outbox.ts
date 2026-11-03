@@ -78,6 +78,17 @@ export function classifyPushError(status: number | null | undefined): PushErrorK
 }
 
 /**
+ * Apakah kegagalan berarti backend benar-benar tak terjangkau (label
+ * "Server offline")? Hanya jaringan putus/timeout (tanpa status) dan 502–504
+ * dari Nginx (backend mati/macet). Status lain — termasuk 429 throttle —
+ * berarti server hidup & menjawab; dulu 429 ikut dianggap offline sehingga
+ * kiosk menampilkan "Server offline" padahal koneksinya lancar.
+ */
+export function isServerUnreachable(status: number | null | undefined): boolean {
+  return !status || status === 502 || status === 503 || status === 504;
+}
+
+/**
  * Pulihkan antrean saat aplikasi mulai:
  *  - `syncing` → `pending` (aplikasi tertutup di tengah pengiriman);
  *  - `failed` yang bukan karena data ditolak (versi lama menandai gangguan
@@ -363,7 +374,7 @@ export async function flushApiOutbox(opts?: {
         writeMeta({
           lastSyncedAt: readMeta().lastSyncedAt,
           lastError: result.error ?? "Unknown error",
-          reachable: kind !== "transient",
+          reachable: !isServerUnreachable(result.status),
         });
         if (nextStatus === "failed") failed += 1;
         else skipped += 1;

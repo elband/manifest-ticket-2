@@ -150,6 +150,28 @@ describe("flushApiOutbox saat jaringan terganggu", () => {
     expect(s.online).toBe(true);
   });
 
+  it("throttle (429) → tetap pending tapi status tetap online (server hidup)", async () => {
+    enqueueScanPush(scan("scn_a"));
+    pushMock.mockResolvedValue({ ok: false, status: 429, error: "Too Many Requests" });
+
+    await flushApiOutbox();
+
+    const s = getApiOutboxSummary();
+    expect(s.pending).toBe(1);
+    expect(s.failed).toBe(0);
+    expect(s.online).toBe(true);
+    expect(s.lastError).toBe("Too Many Requests");
+  });
+
+  it("backend mati di balik Nginx (502) → status offline", async () => {
+    enqueueScanPush(scan("scn_a"));
+    pushMock.mockResolvedValue({ ok: false, status: 502, error: "HTTP 502" });
+
+    await flushApiOutbox();
+
+    expect(getApiOutboxSummary().online).toBe(false);
+  });
+
   it("token kedaluwarsa (401) → menunggu login ulang tanpa menghabiskan jatah", async () => {
     enqueueScanPush(scan("scn_a"));
     pushMock.mockResolvedValue({ ok: false, status: 401, error: "Sesi habis" });
