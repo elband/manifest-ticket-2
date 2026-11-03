@@ -127,11 +127,54 @@ export function getSettings(): AppSettings {
   }
 }
 
-export function saveSettings(patch: Partial<AppSettings>) {
+/**
+ * Setelan khusus perangkat — TIDAK ikut disinkronkan ke backend:
+ * kamera berbeda di tiap perangkat, dan `apiSyncEnabled` mengikuti login
+ * backend perangkat itu sendiri. Selain ini, semua setelan berlaku global
+ * (lihat settingsSync.ts).
+ */
+export const DEVICE_LOCAL_KEYS: readonly (keyof AppSettings)[] = [
+  "faceCameraDeviceId",
+  "scannerCameraDeviceId",
+  "apiSyncEnabled",
+];
+
+/** Bagian setelan yang dibagi ke semua perangkat lewat backend. */
+export function getSharedSettings(s: AppSettings = getSettings()): Partial<AppSettings> {
+  const out: Record<string, unknown> = { ...s };
+  for (const k of DEVICE_LOCAL_KEYS) delete out[k];
+  return out as Partial<AppSettings>;
+}
+
+/** Ambil hanya kunci yang dikenal & bukan khusus perangkat dari data backend. */
+export function pickSharedSettings(data: Record<string, unknown>): Partial<AppSettings> {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(DEFAULTS) as (keyof AppSettings)[]) {
+    if (DEVICE_LOCAL_KEYS.includes(k) || !(k in data)) continue;
+    out[k] = data[k];
+  }
+  return out as Partial<AppSettings>;
+}
+
+/**
+ * Simpan setelan. Perubahan setelan global oleh pengguna memicu event
+ * `afvs:settings-local` supaya settingsSync mendorongnya ke backend;
+ * `fromRemote` dipakai saat menerapkan setelan yang ditarik dari backend.
+ */
+export function saveSettings(
+  patch: Partial<AppSettings>,
+  opts?: { fromRemote?: boolean },
+) {
   if (!isBrowser()) return;
-  const next = { ...getSettings(), ...patch };
+  const prev = getSettings();
+  const next = { ...prev, ...patch };
   window.localStorage.setItem(KEY, JSON.stringify(next));
   window.dispatchEvent(new CustomEvent("afvs:settings", { detail: next }));
+  if (opts?.fromRemote) return;
+  const sharedChanged = (Object.keys(patch) as (keyof AppSettings)[]).some(
+    (k) => !DEVICE_LOCAL_KEYS.includes(k) && prev[k] !== next[k],
+  );
+  if (sharedChanged) window.dispatchEvent(new CustomEvent("afvs:settings-local"));
 }
 
 export function subscribeSettings(cb: (s: AppSettings) => void): () => void {

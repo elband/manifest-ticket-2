@@ -117,3 +117,13 @@ model ScanEvent {
   @@index([flightNumber]) // filter list by flightNumber (P-11)
   @@index([scannedAt]) // filter/urut tanggal lintas-station (P-11)
 }
+
+// Pengaturan aplikasi frontend yang berlaku GLOBAL untuk semua perangkat.
+// Satu baris (id = "global"); `data` = subset AppSettings yang dibagi
+// (setelan khusus perangkat seperti kamera tetap di localStorage).
+model AppSetting {
+  id          String   @id
+  data        Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}

@@ -794,3 +794,44 @@ export async function apiHealth(timeoutMs = 5_000): Promise<ApiResult<true>> {
     clearTimeout(timer);
   }
 }
+
+// ─────────────────────────── Pengaturan global ───────────────────────────
+
+export interface ApiAppSettings {
+  /** null = belum pernah disimpan di backend. */
+  data: Record<string, unknown> | null;
+  updatedAt: string | null;
+}
+
+export async function apiGetAppSettings(timeoutMs = 10_000): Promise<ApiResult<ApiAppSettings>> {
+  try {
+    const res = await authedFetch("/settings", { cache: "no-store" }, timeoutMs);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiAppSettings };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+export async function apiPutAppSettings(
+  data: Record<string, unknown>,
+  timeoutMs = 10_000,
+): Promise<ApiResult<ApiAppSettings>> {
+  try {
+    const res = await authedFetch(
+      "/settings",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data }),
+      },
+      timeoutMs,
+    );
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiAppSettings };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}

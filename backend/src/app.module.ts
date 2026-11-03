@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule } from "@nestjs/config";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
+import { AppSettingsModule } from "./app-settings/app-settings.module";
 import { AuthModule } from "./auth/auth.module";
 import { FacePhotosModule } from "./face-photos/face-photos.module";
 import { FlightsModule } from "./flights/flights.module";
@@ -20,6 +21,7 @@ import { ScanEventsModule } from "./scan-events/scan-events.module";
     FlightsModule,
     OperatorsModule,
     ScanEventsModule,
+    AppSettingsModule,
     FacePhotosModule,
   ],
   controllers: [HealthController],

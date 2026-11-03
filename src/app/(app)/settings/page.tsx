@@ -59,6 +59,7 @@ import {
   SikerenSyncMode,
   getSettings,
   saveSettings,
+  subscribeSettings,
 } from "@/lib/settings";
 import {
   clearOutbox,
@@ -126,7 +127,12 @@ export default function SettingsPage() {
     refreshFaceUsage();
     setOutbox(getOutboxSummary());
     const unsub = subscribeOutbox(() => setOutbox(getOutboxSummary()));
-    return unsub;
+    // Pengaturan global bisa berubah dari perangkat lain (settingsSync).
+    const unsubSettings = subscribeSettings(setSettings);
+    return () => {
+      unsub();
+      unsubSettings();
+    };
   }, [router]);
 
   const update = (patch: Partial<AppSettings>) => {
