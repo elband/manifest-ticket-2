@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from "@nestjs/common";
+import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
@@ -169,6 +169,31 @@ export class PasService {
           ? `Masa berlaku pas habis (${card.validUntil}).`
           : "Pas bandara terdaftar & masih berlaku.",
       card,
+    };
+  }
+
+  /**
+   * Detail satu riwayat cek PAS + data kartu TERKINI dari server PAS (termasuk
+   * foto, yang tidak disimpan di DB). Tidak mencatat scan baru.
+   */
+  async detail(id: string, user: JwtPayload) {
+    const scan = await this.prisma.pasScan.findUnique({
+      where: { id },
+      include: {
+        operator: { select: { name: true } },
+        device: { select: { name: true } },
+      },
+    });
+    // Operator hanya station-nya sendiri; 404 agar tak bisa dienumerasi.
+    if (!scan) throw new NotFoundException();
+    if (!isPrivileged(user.role) && scan.station !== user.station) {
+      throw new NotFoundException();
+    }
+    const live = await this.lookup(scan.pasId);
+    return {
+      scan,
+      sourceUrl: this.base + scan.pasId,
+      live: { ...live, checkedAt: new Date().toISOString() },
     };
   }
 

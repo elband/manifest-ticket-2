@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { Throttle } from "@nestjs/throttler";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -24,5 +24,12 @@ export class PasController {
   @Get("scans")
   list(@Req() req: { user: JwtPayload }, @Query() q: ListPasScansQuery) {
     return this.svc.list(q, req.user);
+  }
+
+  /** Detail riwayat cek + data kartu terkini (foto) dari server PAS. */
+  @Get("scans/:id")
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  detail(@Req() req: { user: JwtPayload }, @Param("id") id: string) {
+    return this.svc.detail(id, req.user);
   }
 }

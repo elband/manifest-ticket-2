@@ -31,6 +31,7 @@ import {
 } from "@/lib/api/client";
 import { getSession } from "@/lib/storage";
 import { Pagination } from "@/components/ui/Pagination";
+import { BoardingScanModal, PasScanModal } from "@/components/scan/ScanDetailModals";
 
 const PAGE_SIZE = 25; // P-08: render bertahap, bukan 200 baris sekaligus
 
@@ -111,6 +112,10 @@ export default function AdminScansPage() {
   const [page, setPage] = useState(1);
   // Halaman Koneksi Backend khusus admin; role lain login ulang lewat /login.
   const [canConnect, setCanConnect] = useState(false);
+  const [openScan, setOpenScan] = useState<ApiScanEvent | null>(null);
+  const [openPas, setOpenPas] = useState<ApiPasScan | null>(null);
+  const closeScan = useCallback(() => setOpenScan(null), []);
+  const closePas = useCallback(() => setOpenPas(null), []);
 
   useEffect(() => {
     setCanConnect(getSession()?.role === "admin");
@@ -364,8 +369,12 @@ export default function AdminScansPage() {
                 <>
                   <div className="divide-y divide-hairline">
                     {kind === "pas"
-                      ? paginatedPas.map((it) => <PasRow key={it.id} ev={it} />)
-                      : paginated.map((it) => <ScanRow key={it.eventId} ev={it} />)}
+                      ? paginatedPas.map((it) => (
+                          <PasRow key={it.id} ev={it} onOpen={setOpenPas} />
+                        ))
+                      : paginated.map((it) => (
+                          <ScanRow key={it.eventId} ev={it} onOpen={setOpenScan} />
+                        ))}
                   </div>
                   <div className="px-3 py-3 sm:px-4">
                     <Pagination
@@ -383,11 +392,22 @@ export default function AdminScansPage() {
           </>
         )}
       </div>
+      <BoardingScanModal ev={openScan} onClose={closeScan} />
+      <PasScanModal scan={openPas} onClose={closePas} />
     </>
   );
 }
 
-function ScanRow({ ev }: { ev: ApiScanEvent }) {
+const ROW_CLS =
+  "flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-surface-2/60 focus-visible:bg-surface-2/60 focus-visible:outline-none sm:px-4";
+
+function ScanRow({
+  ev,
+  onOpen,
+}: {
+  ev: ApiScanEvent;
+  onOpen: (ev: ApiScanEvent) => void;
+}) {
   const rs = RESULT_STYLE[ev.resultStatus];
   const badgeCls = rs?.cls ?? RESULT_FALLBACK.cls;
   const BadgeIcon = rs?.icon ?? RESULT_FALLBACK.icon;
@@ -398,7 +418,7 @@ function ScanRow({ ev }: { ev: ApiScanEvent }) {
     minute: "2-digit",
   });
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-surface-2/60 sm:px-4">
+    <button type="button" onClick={() => onOpen(ev)} className={ROW_CLS}>
       <FaceThumb eventId={ev.eventId} hasPhoto={Boolean(ev.facePhotoPath)} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -428,11 +448,17 @@ function ScanRow({ ev }: { ev: ApiScanEvent }) {
       <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">
         {time}
       </span>
-    </div>
+    </button>
   );
 }
 
-function PasRow({ ev }: { ev: ApiPasScan }) {
+function PasRow({
+  ev,
+  onOpen,
+}: {
+  ev: ApiPasScan;
+  onOpen: (ev: ApiPasScan) => void;
+}) {
   const ps = PAS_STYLE[ev.status] ?? PAS_STYLE.ERROR;
   const time = new Date(ev.createdAt).toLocaleString("id-ID", {
     day: "2-digit",
@@ -441,7 +467,7 @@ function PasRow({ ev }: { ev: ApiPasScan }) {
     minute: "2-digit",
   });
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5 transition hover:bg-surface-2/60 sm:px-4">
+    <button type="button" onClick={() => onOpen(ev)} className={ROW_CLS}>
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-ink-subtle ring-1 ring-hairline">
         <IdCard className="h-4 w-4" />
       </span>
@@ -479,7 +505,7 @@ function PasRow({ ev }: { ev: ApiPasScan }) {
       <span className="shrink-0 text-[11px] tabular-nums text-ink-subtle">
         {time}
       </span>
-    </div>
+    </button>
   );
 }
 

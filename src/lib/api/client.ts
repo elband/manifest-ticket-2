@@ -610,6 +610,32 @@ export async function apiListPasScans(params: {
   });
 }
 
+export interface ApiPasScanDetail {
+  scan: ApiPasScan & { device?: { name: string } | null };
+  /** Halaman validasi resmi kartu di server PAS. */
+  sourceUrl: string;
+  /** Data kartu terkini dari server PAS (foto tidak disimpan di DB). */
+  live: { status: PasStatus; message: string; card: PasCard | null; checkedAt: string };
+}
+
+/** Detail riwayat cek PAS + data kartu terkini (termasuk foto). Tidak mencatat scan baru. */
+export async function apiGetPasScanDetail(
+  id: string,
+): Promise<ApiResult<ApiPasScanDetail>> {
+  try {
+    const res = await authedFetch(
+      `/pas/scans/${encodeURIComponent(id)}`,
+      undefined,
+      PAS_VERIFY_TIMEOUT_MS,
+    );
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as ApiPasScanDetail };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
 export interface ApiScanEvent {
   id: string;
   eventId: string;

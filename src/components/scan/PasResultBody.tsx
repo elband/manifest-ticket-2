@@ -139,7 +139,17 @@ function Field({
   );
 }
 
-export function PasResultBody({ state }: { state: PasCheckState }) {
+export function PasResultBody({
+  state,
+  hideGuidance = false,
+  photoLoading = false,
+}: {
+  state: PasCheckState;
+  /** Sembunyikan panduan petugas (mis. saat melihat riwayat di Monitor Scan). */
+  hideGuidance?: boolean;
+  /** Foto sedang diambil dari server PAS — tampilkan indikator, bukan ikon kosong. */
+  photoLoading?: boolean;
+}) {
   if (state.phase === "loading") {
     return (
       <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-5 py-6 ring-1 ring-slate-100 dark:bg-white/5 dark:ring-hairline-soft">
@@ -185,7 +195,11 @@ export function PasResultBody({ state }: { state: PasCheckState }) {
               />
             ) : (
               <div className="grid h-32 w-[6.5rem] place-items-center rounded-xl bg-slate-200 text-slate-400 sm:h-56 sm:w-44 dark:bg-white/10">
-                <UserRound className="h-12 w-12 sm:h-16 sm:w-16" />
+                {photoLoading ? (
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                ) : (
+                  <UserRound className="h-12 w-12 sm:h-16 sm:w-16" />
+                )}
               </div>
             )}
           </div>
@@ -207,9 +221,9 @@ export function PasResultBody({ state }: { state: PasCheckState }) {
 
           <div className="col-span-2 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-slate-200/70 pt-3 sm:col-span-1 sm:col-start-2 dark:border-white/10">
             <Field label="Nomor Pas" className="col-span-2 sm:col-span-1">
-              <span className="flex items-center gap-1.5 font-mono">
+              <span className="flex min-w-0 items-center gap-1.5 font-mono">
                 <IdCard className="h-4 w-4 shrink-0 text-slate-400" />
-                {card.pasNumber ?? "—"}
+                <span className="min-w-0 break-all">{card.pasNumber ?? "—"}</span>
               </span>
             </Field>
             <Field label="Warna Kartu">
@@ -273,7 +287,7 @@ export function PasResultBody({ state }: { state: PasCheckState }) {
         </div>
       )}
 
-      {GUIDANCE[result.status] && (
+      {!hideGuidance && GUIDANCE[result.status] && (
         <div className={cn("flex items-start gap-3 rounded-2xl px-4 py-3 ring-1", TONE_BOX[tone])}>
           {tone === "success" ? (
             <BadgeCheck className="mt-0.5 h-5 w-5 shrink-0" />
