@@ -215,13 +215,15 @@ self.addEventListener("fetch", (event) => {
     sameOrigin &&
     (url.pathname.startsWith("/icons/") ||
       url.pathname === "/manifest.webmanifest" ||
-      /\.(?:css|js|woff2?|ttf|svg|png|jpg|jpeg|gif|ico|webp|avif)$/i.test(
+      /\.(?:css|js|woff2?|ttf|svg|png|jpg|jpeg|gif|ico|webp|avif|mp3)$/i.test(
         url.pathname,
       ))
   ) {
     event.respondWith(
       caches.open(RUNTIME_CACHE).then(async (cache) => {
-        const cached = await cache.match(req);
+        // Belum ada di runtime cache → pakai salinan precache (mis. suara
+        // hasil scan yang dipasang saat install) agar tetap jalan offline.
+        const cached = (await cache.match(req)) ?? (await caches.match(req));
         const network = fetch(req)
           .then((res) => {
             if (res && res.ok) {

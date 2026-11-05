@@ -70,8 +70,15 @@ Lubuntu umumnya tidak punya suara TTS Bahasa Indonesia.
 - Suara bisa dimatikan per perangkat di **Pengaturan → Suara feedback**.
 - **Tidak ada suara:** cek volume dan output di ikon speaker panel Lubuntu
   (atau `pavucontrol`). Uji speaker dengan `speaker-test -t wav -c 2 -l 1`.
-- Rekaman bisa diganti suara sendiri dengan menimpa ketiga file mp3 dengan
-  nama yang sama, lalu deploy ulang frontend.
+- Rekaman saat ini: suara **Selma Sita** dari ElevenLabs (voice_id
+  `Q3XXAZw7SBnf6HYtNc0s`, model `eleven_multilingual_v2`), dibuat dengan akun
+  berbayar agar boleh dipakai di sistem ini. Jeda awal/akhir dipotong dan
+  kerasnya disamakan (rata-rata ±−16 dB).
+- Membuat ulang: `ELEVENLABS_API_KEY=… npm run sounds:generate -- --voice Q3XXAZw7SBnf6HYtNc0s`
+  (atau Google Cloud TTS dengan `GOOGLE_TTS_API_KEY`, lihat
+  `scripts/generate-scan-sounds.mjs`). Hasil mentah perlu dipotong jedanya
+  dan disamakan kerasnya seperti di atas. Bisa juga ditimpa rekaman sendiri
+  dengan nama file sama. Setelah itu deploy ulang frontend.
 
 ## Cek & masalah umum
 
