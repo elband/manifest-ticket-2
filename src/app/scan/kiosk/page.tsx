@@ -24,6 +24,7 @@ import {
   Volume2,
   VolumeX,
   RotateCcw,
+  Settings2,
   Sparkles,
   Cloud,
   CloudOff,
@@ -81,6 +82,7 @@ import {
 import {
   playFeedbackHaptic,
   playFeedbackSound,
+  primeFeedbackAudio,
   processScan,
   processScanWithFace,
 } from "@/lib/scanService";
@@ -388,6 +390,8 @@ export default function KioskPage() {
   // Tunda render UI sampai mounted di client supaya server & client awal sama.
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
+  // Muat rekaman suara & buka kunci autoplay pada interaksi pertama.
+  React.useEffect(() => primeFeedbackAudio(), []);
   const [session, setSession] = React.useState<SessionUser | null>(null);
   const [rawSettings, setSettings] = React.useState<AppSettings>(getSettings());
   // Mode kiosk tanpa kamera: semua fitur yang butuh kamera (foto wajah, gerbang
@@ -898,7 +902,7 @@ export default function KioskPage() {
           message: string,
           manualPass = false,
         ) => {
-          // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
+          playFeedbackSound(status);
           playFeedbackHaptic(status);
           setSessionStats((prev) =>
             status === "VALID_FLIGHT"
@@ -1042,7 +1046,7 @@ export default function KioskPage() {
       const requireKtpGate = willOpenKtp && settings.ktpRequireForValid;
 
       if (!requireKtpGate) {
-        // Audio hasil scan (berhasil/gagal) dimatikan — cukup getar + visual.
+        playFeedbackSound(outcome.status);
         playFeedbackHaptic(outcome.status);
 
         setSessionStats((prev) => {
@@ -1130,9 +1134,10 @@ export default function KioskPage() {
         error: `Tidak dapat memeriksa kartu PAS: ${res.error ?? "server tidak merespons"}.`,
       };
     });
-    playFeedbackHaptic(
-      res.ok && res.data?.status === "VALID" ? "VALID_FLIGHT" : "INVALID_BARCODE",
-    );
+    const pasFeedback: ScanResultStatus =
+      res.ok && res.data?.status === "VALID" ? "VALID_FLIGHT" : "INVALID_BARCODE";
+    playFeedbackSound(pasFeedback);
+    playFeedbackHaptic(pasFeedback);
   };
 
   // Kamera terus membaca selama kode masih di depan lensa. Kode yang sama baru
@@ -1346,6 +1351,7 @@ export default function KioskPage() {
       setRecent(getScanEvents().slice(0, 6));
       const today = new Date().toISOString().slice(0, 10);
       setTodayScans(getScanEvents().filter((e) => e.scannedAt.slice(0, 10) === today));
+      playFeedbackSound("KTP_MISMATCH");
       playFeedbackHaptic("KTP_MISMATCH");
       toast.error(message, "Tidak sesuai");
     }
@@ -1428,6 +1434,7 @@ export default function KioskPage() {
             onReset={handleReset}
             onSwitchOfficer={() => setOfficerSwitchOpen(true)}
             onExit={exitKiosk}
+            onOpenSettings={() => router.push("/scan/pengaturan")}
             onCloseBrowser={() => setPowerConfirm("close")}
             onShutdown={
               agentActions.includes("shutdown")
@@ -1758,11 +1765,13 @@ export default function KioskPage() {
                   : prev,
               );
               setSessionStats((prev) => ({ ...prev, rejected: prev.rejected + 1 }));
+              playFeedbackSound("KTP_MISMATCH");
               playFeedbackHaptic("KTP_MISMATCH");
               toast.error(msg, title);
             } else if (requireKtp && passed) {
               // LOLOS: berikan feedback sukses yang tadi ditunda di submit().
               setSessionStats((prev) => ({ ...prev, valid: prev.valid + 1 }));
+              playFeedbackSound("VALID_FLIGHT");
               playFeedbackHaptic("VALID_FLIGHT");
               if (result.status === "manual_pass") {
                 toast.info("KTP diverifikasi manual oleh operator.", "KTP Manual");
@@ -3018,6 +3027,7 @@ function KioskMenu({
   onReset,
   onSwitchOfficer,
   onExit,
+  onOpenSettings,
   onCloseBrowser,
   onShutdown,
   onMinimizeBrowser,
@@ -3032,6 +3042,8 @@ function KioskMenu({
   /** Buka keypad PIN untuk mengganti petugas yang bertugas di kiosk. */
   onSwitchOfficer: () => void;
   onExit: () => void;
+  /** Profil petugas & setelan perangkat (/scan/pengaturan). */
+  onOpenSettings: () => void;
   onCloseBrowser: () => void;
   /** Hanya ada bila agen kiosk lokal terdeteksi. */
   onShutdown?: () => void;
@@ -3161,6 +3173,14 @@ function KioskMenu({
               }}
             />
           )}
+          <MenuItem
+            icon={<Settings2 className="h-4 w-4" />}
+            label="Pengaturan"
+            onClick={() => {
+              setOpen(false);
+              onOpenSettings();
+            }}
+          />
           <MenuItem
             icon={<RotateCcw className="h-4 w-4" />}
             label="Reset statistik tampilan"

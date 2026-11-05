@@ -40,6 +40,7 @@ import { getFlights, getScanEvents, getSession } from "@/lib/storage";
 import {
   playFeedbackHaptic,
   playFeedbackSound,
+  primeFeedbackAudio,
   processScan,
 } from "@/lib/scanService";
 import { canManageFlights } from "@/lib/auth";
@@ -109,6 +110,7 @@ function ScanPageContent() {
   const toast = useToast();
 
   useEffect(() => {
+    primeFeedbackAudio();
     const s = getSession();
     setSession(s);
     setFlights(getFlights());

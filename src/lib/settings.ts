@@ -6,6 +6,8 @@ export type SikerenSyncMode = "auto" | "manual";
 
 export interface AppSettings {
   soundOn: boolean;
+  /** Volume suara hasil scan 0–100 (khusus perangkat). */
+  soundVolume: number;
   hapticOn: boolean;
   locale: Locale;
   theme: ThemeMode;
@@ -81,6 +83,7 @@ export const RECOMMENDED_BOARDING: BoardingSettings = {
 
 const DEFAULTS: AppSettings = {
   soundOn: true,
+  soundVolume: 100,
   hapticOn: true,
   locale: "id",
   theme: "airport",
@@ -130,8 +133,8 @@ export function getSettings(): AppSettings {
 /**
  * Setelan khusus perangkat — TIDAK ikut disinkronkan ke backend:
  * kamera berbeda di tiap perangkat, `apiSyncEnabled` mengikuti login
- * backend perangkat itu sendiri, dan tema serta suara feedback dipilih
- * bebas per perangkat. Selain ini, semua setelan berlaku global
+ * backend perangkat itu sendiri, dan tema, suara (termasuk volume) serta getar
+ * feedback dipilih bebas per perangkat. Selain ini, semua setelan berlaku global
  * (lihat settingsSync.ts).
  */
 export const DEVICE_LOCAL_KEYS: readonly (keyof AppSettings)[] = [
@@ -140,6 +143,8 @@ export const DEVICE_LOCAL_KEYS: readonly (keyof AppSettings)[] = [
   "apiSyncEnabled",
   "theme",
   "soundOn",
+  "soundVolume",
+  "hapticOn",
 ];
 
 /** Bagian setelan yang dibagi ke semua perangkat lewat backend. */

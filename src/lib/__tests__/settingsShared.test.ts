@@ -10,10 +10,14 @@ describe("pengaturan global", () => {
       apiSyncEnabled: true,
       theme: "dark",
       soundOn: false,
+      soundVolume: 40,
+      hapticOn: false,
       kioskResultDurationSec: 0,
     });
     expect(shared).not.toHaveProperty("theme");
     expect(shared).not.toHaveProperty("soundOn");
+    expect(shared).not.toHaveProperty("soundVolume");
+    expect(shared).not.toHaveProperty("hapticOn");
     expect(shared).not.toHaveProperty("faceCameraDeviceId");
     expect(shared).not.toHaveProperty("scannerCameraDeviceId");
     expect(shared).not.toHaveProperty("apiSyncEnabled");
@@ -30,7 +34,7 @@ describe("pengaturan global", () => {
       apiSyncEnabled: false,
       kunciAsing: 123,
     });
-    // Tema & suara milik tiap perangkat — nilai dari server diabaikan.
-    expect(picked).toEqual({ kioskResultDurationSec: 0, hapticOn: false });
+    // Tema, suara & getar milik tiap perangkat — nilai dari server diabaikan.
+    expect(picked).toEqual({ kioskResultDurationSec: 0 });
   });
 });

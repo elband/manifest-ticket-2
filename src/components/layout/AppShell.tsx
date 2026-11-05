@@ -83,6 +83,14 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["admin", "supervisor", "security"],
       },
       {
+        // Profil & setelan perangkat untuk petugas. Admin/supervisor punya
+        // halaman /settings sendiri.
+        href: "/scan/pengaturan",
+        labelKey: "nav.mySettings",
+        icon: SettingsIcon,
+        roles: ["security"],
+      },
+      {
         href: "/passengers",
         labelKey: "nav.passengers",
         icon: Users,
@@ -259,6 +267,16 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
     setOpen(false);
   }, [pathname]);
 
+  // Nama/email diubah dari halaman profil → perbarui header & sidebar.
+  useEffect(() => {
+    const onSession = () => {
+      const s = getSession();
+      if (s) setSession(s);
+    };
+    window.addEventListener("afvs:session", onSession);
+    return () => window.removeEventListener("afvs:session", onSession);
+  }, []);
+
   // P-15: jam dipindah ke komponen <LiveClock/> sendiri agar update tiap detik
   // tidak me-render ulang seluruh shell.
 
@@ -407,9 +425,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
               <div className="space-y-0.5">
                 {section.items.map((item, idx) => {
                   const Icon = item.icon;
+                  // "/scan" tidak ikut menyala saat membuka "/scan/pengaturan".
                   const active =
                     pathname === item.href ||
-                    pathname.startsWith(item.href + "/");
+                    (pathname.startsWith(item.href + "/") &&
+                      !section.items.some(
+                        (o) => o.href !== item.href && o.href.startsWith(item.href + "/") && pathname.startsWith(o.href),
+                      ));
                   return (
                     <Link
                       key={item.href}
@@ -720,6 +742,7 @@ function breadcrumbTail(pathname: string, t: (k: string) => string) {
   if (pathname === "/flights") return t("nav.flights");
   if (pathname.startsWith("/jadwal")) return t("nav.jadwalFids");
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
+  if (pathname.startsWith("/scan/pengaturan")) return t("nav.mySettings");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
   if (pathname.startsWith("/radar")) return t("nav.radar");
@@ -741,6 +764,7 @@ function currentTitle(pathname: string, t: (k: string) => string) {
   if (pathname.startsWith("/flights/")) return "Detail Penerbangan";
   if (pathname.startsWith("/jadwal")) return t("nav.jadwalFids");
   if (pathname.startsWith("/scan-events")) return t("nav.scanEvents");
+  if (pathname.startsWith("/scan/pengaturan")) return t("nav.mySettings");
   if (pathname.startsWith("/scan")) return t("nav.scan");
   if (pathname.startsWith("/passengers")) return t("nav.passengers");
   if (pathname.startsWith("/radar")) return t("nav.radar");

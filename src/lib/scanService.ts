@@ -324,7 +324,7 @@ export async function processScanWithFace(
 }
 
 /* Text-to-speech — suara manusia mengucapkan hasil scan (Bahasa Indonesia). */
-export function speakFeedback(text: string) {
+export function speakFeedback(text: string, volume = 1) {
   if (typeof window === "undefined") return;
   const synth = window.speechSynthesis;
   if (!synth) return;
@@ -334,7 +334,7 @@ export function speakFeedback(text: string) {
     utter.lang = "id-ID";
     utter.rate = 1.05;
     utter.pitch = 1.05;
-    utter.volume = 1;
+    utter.volume = volume;
     // Pilih voice Bahasa Indonesia bila tersedia di perangkat.
     const voices = synth.getVoices();
     const idVoice =
@@ -346,31 +346,145 @@ export function speakFeedback(text: string) {
   }
 }
 
-/* Web Audio feedback */
+/* ───────────────────── Audio feedback hasil scan ─────────────────────
+ * Suara = nada pendek (Web Audio) + rekaman suara manusia di /public/sounds.
+ * Rekaman dipakai, bukan speechSynthesis, karena Chromium/Electron di Linux
+ * (kiosk Lubuntu) umumnya tidak punya suara TTS Bahasa Indonesia. TTS hanya
+ * cadangan bila file rekaman gagal dimuat.
+ *
+ * Kebijakan autoplay Chromium: AudioContext baru boleh berbunyi setelah ada
+ * interaksi pengguna. Satu AudioContext dipakai bersama dan di-resume pada
+ * klik/sentuh/tombol pertama (primeFeedbackAudio), jadi scan via kamera
+ * setelahnya tetap berbunyi. Kiosk tanpa interaksi sama sekali butuh kebijakan
+ * Chromium AutoplayAllowlist / switch autoplay-policy (lihat kiosk-agent).
+ */
+
+type VoiceClip = "berhasil" | "duplikat" | "gagal";
+
+const VOICE_TEXT: Record<VoiceClip, string> = {
+  berhasil: "Berhasil",
+  duplikat: "Tiket sudah dipakai",
+  gagal: "Gagal",
+};
+
+let audioCtx: AudioContext | null = null;
+const clipCache = new Map<VoiceClip, Promise<AudioBuffer | null>>();
+let primed = false;
+
+function getAudioCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  if (audioCtx && audioCtx.state !== "closed") return audioCtx;
+  const Ctor =
+    (window as unknown as { AudioContext?: typeof AudioContext }).AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext })
+      .webkitAudioContext;
+  if (!Ctor) return null;
+  try {
+    audioCtx = new Ctor();
+  } catch {
+    audioCtx = null;
+  }
+  return audioCtx;
+}
+
+function loadClip(name: VoiceClip): Promise<AudioBuffer | null> {
+  const cached = clipCache.get(name);
+  if (cached) return cached;
+  const p = (async () => {
+    const ctx = getAudioCtx();
+    if (!ctx) return null;
+    try {
+      const res = await fetch(`/sounds/scan-${name}.mp3`);
+      if (!res.ok) return null;
+      const data = await res.arrayBuffer();
+      return await ctx.decodeAudioData(data);
+    } catch {
+      return null;
+    }
+  })();
+  // Gagal (mis. offline sebelum ter-cache) → boleh dicoba lagi nanti.
+  p.then((b) => {
+    if (!b) clipCache.delete(name);
+  });
+  clipCache.set(name, p);
+  return p;
+}
+
+/** Coba hidupkan AudioContext; true bila sudah boleh berbunyi. */
+async function ensureRunning(ctx: AudioContext): Promise<boolean> {
+  if (ctx.state === "running") return true;
+  try {
+    await Promise.race([
+      ctx.resume(),
+      new Promise((r) => setTimeout(r, 300)),
+    ]);
+  } catch {
+    /* ignore */
+  }
+  return (ctx.state as string) === "running";
+}
+
+/**
+ * Siapkan audio feedback: muat rekaman & buka kunci autoplay pada interaksi
+ * pertama. Panggil sekali saat halaman scan dibuka (aman dipanggil berulang).
+ */
+export function primeFeedbackAudio() {
+  if (typeof window === "undefined" || primed) return;
+  primed = true;
+  (Object.keys(VOICE_TEXT) as VoiceClip[]).forEach((c) => void loadClip(c));
+  const unlock = () => {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+    ctx.resume().catch(() => {});
+    if (ctx.state === "running") {
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+      window.removeEventListener("touchstart", unlock, true);
+    }
+  };
+  window.addEventListener("pointerdown", unlock, true);
+  window.addEventListener("keydown", unlock, true);
+  window.addEventListener("touchstart", unlock, true);
+  unlock(); // langsung jalan bila kebijakan autoplay sudah mengizinkan
+}
+
+function clipFor(status: ScanResultStatus): VoiceClip {
+  if (status === "VALID_FLIGHT") return "berhasil";
+  if (status === "DUPLICATE_SCAN") return "duplikat";
+  return "gagal";
+}
+
+/** Putar contoh suara dari halaman pengaturan (tetap berbunyi walau suara dimatikan). */
+export function previewFeedbackSound(status: ScanResultStatus) {
+  if (typeof window === "undefined") return;
+  primeFeedbackAudio();
+  void playFeedbackSoundAsync(status);
+}
+
+/* Web Audio feedback — nada + suara "Berhasil"/"Tiket sudah dipakai"/"Gagal". */
 export function playFeedbackSound(status: ScanResultStatus) {
   if (typeof window === "undefined") return;
-  try {
-    // Lazy import keeps this module SSR-safe and avoids a circular dep.
-    const { getSettings } = require("./settings") as typeof import("./settings");
-    if (!getSettings().soundOn) return;
-  } catch {
-    /* fallback: allow sound if settings unavailable */
+  if (!getSettings().soundOn) return;
+  void playFeedbackSoundAsync(status);
+}
+
+async function playFeedbackSoundAsync(status: ScanResultStatus) {
+  const clip = clipFor(status);
+  const volume = Math.min(1, Math.max(0, (getSettings().soundVolume ?? 100) / 100));
+  if (volume <= 0) return;
+  const ctx = getAudioCtx();
+  if (!ctx || !(await ensureRunning(ctx))) {
+    // Web Audio tak tersedia / masih dikunci autoplay — coba TTS saja.
+    speakFeedback(VOICE_TEXT[clip], volume);
+    return;
   }
 
-  // Suara manusia untuk hasil scan (di atas nada/beep).
-  if (status === "VALID_FLIGHT") speakFeedback("Berhasil");
-  else if (status === "DUPLICATE_SCAN") speakFeedback("Tiket sudah dipakai");
-  else speakFeedback("Gagal");
-
   try {
-    const AudioCtx =
-      (window as unknown as { AudioContext?: typeof AudioContext })
-        .AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext })
-        .webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-
+    // Satu master gain untuk nada & rekaman → volume per perangkat.
+    const master = ctx.createGain();
+    master.gain.value = volume;
+    master.connect(ctx.destination);
+    setTimeout(() => master.disconnect(), 10_000);
     /** Mainkan satu nada pada offset waktu tertentu. */
     const note = (
       freq: number,
@@ -382,7 +496,7 @@ export function playFeedbackSound(status: ScanResultStatus) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(master);
       osc.type = type;
       osc.frequency.value = freq;
       const t0 = ctx.currentTime + start;
@@ -393,24 +507,34 @@ export function playFeedbackSound(status: ScanResultStatus) {
       osc.stop(t0 + dur + 0.02);
     };
 
-    let total = 0.4;
+    let toneLen: number;
     if (status === "VALID_FLIGHT") {
       // "Ding" pendek sebagai pembuka sebelum suara "Berhasil".
       note(880, 0.0, 0.1, "sine", 0.18);
       note(1318.5, 0.08, 0.14, "sine", 0.18);
-      total = 0.25;
+      toneLen = 0.25;
     } else if (status === "DUPLICATE_SCAN") {
       // Dua nada datar — peringatan duplikat.
       note(660, 0.0, 0.16, "square", 0.2);
       note(660, 0.2, 0.2, "square", 0.2);
-      total = 0.45;
+      toneLen = 0.45;
     } else {
       // Buzz turun — gagal / ditolak.
       note(320, 0.0, 0.18, "square", 0.22);
       note(180, 0.16, 0.34, "square", 0.22);
-      total = 0.55;
+      toneLen = 0.55;
     }
-    setTimeout(() => ctx.close().catch(() => {}), total * 1000 + 150);
+    const startAt = ctx.currentTime + toneLen;
+
+    const buf = await loadClip(clip);
+    if (buf) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(master);
+      src.start(Math.max(startAt, ctx.currentTime));
+    } else {
+      setTimeout(() => speakFeedback(VOICE_TEXT[clip], volume), toneLen * 1000);
+    }
   } catch {
     /* ignore */
   }

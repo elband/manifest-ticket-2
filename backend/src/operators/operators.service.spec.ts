@@ -57,3 +57,48 @@ describe("OperatorsService — guard PIN lemah (setPin)", () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe("OperatorsService — petugas mengganti PIN sendiri (changeOwnPin)", () => {
+  let prisma: ReturnType<typeof makePrisma>;
+  let svc: OperatorsService;
+  let pinHash: string;
+
+  beforeAll(async () => {
+    const bcrypt = await import("bcryptjs");
+    pinHash = await bcrypt.hash("482915", 4);
+  });
+
+  beforeEach(() => {
+    prisma = makePrisma();
+    svc = new OperatorsService(prisma as never);
+    prisma.operator.findUnique.mockResolvedValue({ id: "op1", pinHash });
+    prisma.operator.findFirst.mockResolvedValue(null);
+    prisma.operator.findMany.mockResolvedValue([]);
+    prisma.operator.update.mockResolvedValue({});
+  });
+
+  it("menolak bila PIN lama salah", async () => {
+    await expect(svc.changeOwnPin("op1", "000111", "739215")).rejects.toThrow(
+      "PIN lama salah.",
+    );
+    expect(prisma.operator.update).not.toHaveBeenCalled();
+  });
+
+  it("menolak PIN baru yang sama dengan PIN lama", async () => {
+    await expect(svc.changeOwnPin("op1", "482915", "482915")).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it("menolak PIN baru yang lemah", async () => {
+    await expect(svc.changeOwnPin("op1", "482915", "123456")).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.operator.update).not.toHaveBeenCalled();
+  });
+
+  it("menyimpan PIN baru bila PIN lama benar", async () => {
+    await expect(svc.changeOwnPin("op1", "482915", "739215")).resolves.toEqual({ ok: true });
+    expect(prisma.operator.update).toHaveBeenCalledTimes(1);
+  });
+});

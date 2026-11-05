@@ -962,6 +962,71 @@ export async function apiSetOperatorPhoto(
   }
 }
 
+// ─────────────────────────── Profil petugas (diri sendiri) ───────────────
+
+async function profileRequest<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
+  try {
+    const res = await authedFetch(`/profile${path}`, init);
+    const body = await readJson(res);
+    if (!res.ok) return { ok: false, status: res.status, error: httpError(res.status, body) };
+    return { ok: true, status: res.status, data: body as T };
+  } catch (e) {
+    return { ok: false, error: errMsg(e) };
+  }
+}
+
+/** Profil petugas yang sedang login. */
+export function apiGetProfile(): Promise<ApiResult<ApiOperator>> {
+  return profileRequest<ApiOperator>("");
+}
+
+/** Petugas mengubah nama/email sendiri (role & pos tetap wewenang admin). */
+export function apiUpdateProfile(patch: {
+  name?: string;
+  email?: string;
+}): Promise<ApiResult<ApiOperator>> {
+  return profileRequest<ApiOperator>("", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+/** Ganti PIN sendiri — wajib PIN lama. */
+export function apiChangeOwnPin(
+  currentPin: string,
+  newPin: string,
+): Promise<ApiResult<{ ok: true }>> {
+  return profileRequest<{ ok: true }>("/pin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPin, newPin }),
+  });
+}
+
+export function apiSetOwnPhoto(file: File | Blob): Promise<ApiResult<ApiOperator>> {
+  const fd = new FormData();
+  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const filename = file instanceof File && file.name ? file.name : `photo.${ext}`;
+  fd.set("photo", file, filename);
+  return profileRequest<ApiOperator>("/photo", { method: "POST", body: fd });
+}
+
+export function apiDeleteOwnPhoto(): Promise<ApiResult<ApiOperator>> {
+  return profileRequest<ApiOperator>("/photo", { method: "DELETE" });
+}
+
+/** Foto petugas yang sedang login sebagai object URL. Null jika tak ada. */
+export async function getOwnPhotoObjectUrl(): Promise<string | null> {
+  try {
+    const res = await authedFetch("/profile/photo");
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  } catch {
+    return null;
+  }
+}
+
 /** Hapus foto petugas. Return operator terbaru (hasPhoto: false). */
 export async function apiDeleteOperatorPhoto(
   id: string,

@@ -127,13 +127,16 @@ ResultInactive=yes
 ResultActive=yes
 EOF
 
-echo "→ Kebijakan browser: izinkan halaman SIPANDAI mengakses agen lokal"
+echo "→ Kebijakan browser: izinkan halaman SIPANDAI mengakses agen lokal & memutar suara"
 ORIGINS_JSON=$(printf '"%s",' "${ORIGINS[@]}"); ORIGINS_JSON="[${ORIGINS_JSON%,}]"
 for d in "${POLICY_DIRS[@]}"; do
   install -d -m 755 "$d"
+  # AutoplayAllowlist: suara hasil scan tetap berbunyi walau belum ada klik
+  # sejak browser dibuka (scan via kamera/scanner langsung setelah boot).
   cat > "$d/$POLICY_NAME" <<EOF
 {
-  "LocalNetworkAccessAllowedForUrls": $ORIGINS_JSON
+  "LocalNetworkAccessAllowedForUrls": $ORIGINS_JSON,
+  "AutoplayAllowlist": $ORIGINS_JSON
 }
 EOF
   chmod 644 "$d/$POLICY_NAME"

@@ -145,6 +145,38 @@ export class OperatorsService {
     return { pin };
   }
 
+  /** Profil petugas yang sedang login (tanpa hash). */
+  async getProfile(id: string) {
+    const op = await this.prisma.operator.findUnique({
+      where: { id },
+      select: SELECT_WITH_FLAGS,
+    });
+    if (!op) throw new NotFoundException("Petugas tidak ditemukan.");
+    return withFlags(op);
+  }
+
+  /**
+   * Petugas mengubah data dirinya sendiri — hanya nama & email. Role, pos, dan
+   * status aktif tetap wewenang admin.
+   */
+  async updateProfile(id: string, dto: { name?: string; email?: string }) {
+    return this.update(id, { name: dto.name, email: dto.email });
+  }
+
+  /** Ganti PIN sendiri: wajib PIN lama yang benar (bukan cuma token sesi). */
+  async changeOwnPin(id: string, currentPin: string, newPin: string) {
+    const op = await this.prisma.operator.findUnique({ where: { id } });
+    if (!op) throw new NotFoundException("Petugas tidak ditemukan.");
+    if (!op.pinHash || !(await bcrypt.compare(currentPin, op.pinHash))) {
+      throw new BadRequestException("PIN lama salah.");
+    }
+    if (currentPin === newPin) {
+      throw new BadRequestException("PIN baru harus berbeda dari PIN lama.");
+    }
+    await this.setPin(id, { pin: newPin });
+    return { ok: true };
+  }
+
   /** Simpan foto petugas (file sudah ditulis ke disk oleh multer). Hapus foto lama bila beda path. */
   async setPhoto(id: string, file: Express.Multer.File) {
     const op = await this.prisma.operator.findUnique({ where: { id } });

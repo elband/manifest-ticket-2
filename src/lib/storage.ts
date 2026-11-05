@@ -152,6 +152,18 @@ export function setSession(user: SessionUser | null) {
   }
 }
 
+/**
+ * Ubah data sesi yang sedang aktif (mis. nama dari halaman profil) tanpa
+ * dianggap login baru. Header & sidebar mendengarkan event `afvs:session`.
+ */
+export function updateSession(patch: Partial<Pick<SessionUser, "name" | "email">>) {
+  if (!isBrowser()) return;
+  const cur = getSession();
+  if (!cur) return;
+  write(KEYS.session, { ...cur, ...patch });
+  window.dispatchEvent(new CustomEvent("afvs:session"));
+}
+
 /* Flights */
 export function getFlights(): Flight[] {
   return read<Flight[]>(KEYS.flights, []);

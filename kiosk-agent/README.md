@@ -55,6 +55,24 @@ Skrip ini memasang:
 Setelah pemasangan, **tutup lalu buka ulang browser kiosk** agar kebijakannya
 terbaca. Menu ⚙ kiosk akan menampilkan "Matikan Perangkat".
 
+## Suara hasil scan
+
+Kiosk mengucapkan **"Berhasil"**, **"Tiket sudah dipakai"**, atau **"Gagal"**
+setelah scan boarding pass/kartu PAS. Suaranya berupa file rekaman
+(`public/sounds/scan-*.mp3`), bukan TTS bawaan browser. Ini karena Chromium di
+Lubuntu umumnya tidak punya suara TTS Bahasa Indonesia.
+
+- `install.sh` juga memasang kebijakan Chromium `AutoplayAllowlist` untuk
+  origin kiosk. Dengan kebijakan ini suara tetap berbunyi walau belum ada
+  klik sejak browser dibuka. Perangkat yang memasang agen **sebelum** fitur
+  ini perlu menjalankan ulang `sudo ./install.sh --origin …` lalu membuka
+  ulang browser. Cek di `chrome://policy` bahwa `AutoplayAllowlist` terbaca.
+- Suara bisa dimatikan per perangkat di **Pengaturan → Suara feedback**.
+- **Tidak ada suara:** cek volume dan output di ikon speaker panel Lubuntu
+  (atau `pavucontrol`). Uji speaker dengan `speaker-test -t wav -c 2 -l 1`.
+- Rekaman bisa diganti suara sendiri dengan menimpa ketiga file mp3 dengan
+  nama yang sama, lalu deploy ulang frontend.
+
 ## Cek & masalah umum
 
 ```bash

@@ -18,7 +18,14 @@ const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;
 const PRECACHE = `${CACHE_VERSION}-precache`;
 const OFFLINE_URL = "/offline.html";
-const PRECACHE_URLS = [OFFLINE_URL, "/manifest.webmanifest"];
+const PRECACHE_URLS = [
+  OFFLINE_URL,
+  "/manifest.webmanifest",
+  // Suara hasil scan — harus tersedia saat kiosk offline.
+  "/sounds/scan-berhasil.mp3",
+  "/sounds/scan-duplikat.mp3",
+  "/sounds/scan-gagal.mp3",
+];
 const RUNTIME_MAX_ENTRIES = 80; // P-14: batasi ukuran runtime cache (FIFO)
 // Chunk build lama menumpuk tiap deploy. Pemanasan memasukkan ulang aset yang
 // masih dirujuk halaman, jadi FIFO longgar ini aman untuk build aktif.

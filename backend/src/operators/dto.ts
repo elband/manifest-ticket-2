@@ -112,3 +112,30 @@ export class ListOperatorsQuery {
   @IsString()
   q?: string;
 }
+
+/** Petugas mengubah profil sendiri — hanya nama & email. */
+export class UpdateProfileDto {
+  @ApiPropertyOptional({ example: "Andi Saputra" })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(80)
+  name?: string;
+
+  @ApiPropertyOptional({ example: "andi@afvs.local" })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+}
+
+export class ChangeOwnPinDto {
+  @ApiProperty({ example: "123456" })
+  @IsString()
+  @Matches(/^\d{4,6}$/, { message: "PIN lama harus 4-6 digit angka" })
+  currentPin!: string;
+
+  @ApiProperty({ example: "482915" })
+  @IsString()
+  @Matches(/^\d{4,6}$/, { message: "PIN baru harus 4-6 digit angka" })
+  newPin!: string;
+}

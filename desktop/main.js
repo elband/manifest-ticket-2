@@ -456,6 +456,9 @@ const WEB_PREFERENCES = {
   nodeIntegration: false,
   sandbox: true,
   spellcheck: false,
+  // Suara hasil scan harus berbunyi walau belum ada klik (scan via kamera
+  // tepat setelah aplikasi dibuka). Aplikasi hanya memuat server SIPANDAI.
+  autoplayPolicy: "no-user-gesture-required",
 };
 
 function guardNavigation(contents) {
