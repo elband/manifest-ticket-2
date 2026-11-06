@@ -3407,6 +3407,14 @@ function BoardingPassModalBody({
 
   const softBg = isBusiness ? "#fef3c7" : softTint(flight.airlineCode);
   const accentText = isBusiness ? "#92400e" : accentTextColor(flight.airlineCode);
+  const accentTextDark = isBusiness ? "#fcd34d" : accentTextColorDark(flight.airlineCode);
+  // Mode malam: aksen versi terang + tint transparan sebagai pengganti softBg.
+  const cardVars = {
+    "--bp-accent": accentText,
+    "--bp-accent-dark": accentTextDark,
+    "--bp-soft": softBg,
+    "--bp-soft-dark": `${accentTextDark}24`,
+  } as React.CSSProperties;
   const accentGradient = isBusiness
     ? "from-amber-500 via-yellow-500 to-amber-600"
     : meta.gradient;
@@ -3423,13 +3431,16 @@ function BoardingPassModalBody({
       {last.event.ktpVerification && (
         <KtpMatchBadge v={last.event.ktpVerification} />
       )}
-      <div className="relative overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-slate-200/80">
+      <div
+        className="relative overflow-hidden rounded-3xl bg-white shadow-xl ring-1 ring-slate-200/80 dark:bg-surface-2 dark:shadow-none dark:ring-white/10"
+        style={cardVars}
+      >
         <div className={cn("h-2 w-full bg-gradient-to-r", accentGradient)} />
 
         <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_230px]">
           {/* ── Bagian utama ── */}
           <div className="relative min-w-0 p-6">
-            <Plane className="pointer-events-none absolute -right-6 top-6 h-44 w-44 rotate-[18deg] text-slate-50" />
+            <Plane className="pointer-events-none absolute -right-6 top-6 h-44 w-44 rotate-[18deg] text-slate-50 dark:text-white/[0.04]" />
 
             {/* Maskapai + nomor penerbangan */}
             {/* flex-wrap: di HP nomor penerbangan turun ke baris berikut
@@ -3455,19 +3466,19 @@ function BoardingPassModalBody({
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="line-clamp-2 text-base font-bold leading-tight tracking-tight" style={{ color: accentText }}>
+                  <p className="line-clamp-2 text-base font-bold leading-tight tracking-tight text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]">
                     {meta.name}
                   </p>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-[#94a3b8]">
                     Boarding Pass · {isBusiness ? "Business" : "Economy"}
                   </p>
                 </div>
               </div>
-              <div className="shrink-0 rounded-2xl px-3.5 py-2 text-right" style={{ backgroundColor: softBg }}>
-                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              <div className="shrink-0 rounded-2xl px-3.5 py-2 text-right bg-[color:var(--bp-soft)] dark:bg-[color:var(--bp-soft-dark)]">
+                <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-[#64748b] dark:text-[#a9b4c4]">
                   Penerbangan
                 </p>
-                <p className="font-mono text-2xl font-black leading-none tracking-tight" style={{ color: accentText }}>
+                <p className="font-mono text-2xl font-black leading-none tracking-tight text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]">
                   {flight.flightNumber}
                 </p>
               </div>
@@ -3478,21 +3489,19 @@ function BoardingPassModalBody({
                 info ini ada di potongan tiket (stub) sebelah kanan. */}
             <div className="relative mt-4 grid grid-cols-3 gap-2 md:hidden">
               {[
-                { label: "Gate", value: gate, color: accentText },
-                { label: "Kursi", value: parsed.seatNumber, color: "#0f172a" },
-                { label: "Jam", value: flight.departureTime, color: "#0f172a" },
+                { label: "Gate", value: gate, accent: true },
+                { label: "Kursi", value: parsed.seatNumber, accent: false },
+                { label: "Jam", value: flight.departureTime, accent: false },
               ].map((c) => (
-                <div
-                  key={c.label}
-                  className="min-w-0 rounded-2xl px-2.5 py-2.5"
-                  style={{ backgroundColor: softBg }}
-                >
-                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                <div key={c.label} className="min-w-0 rounded-2xl px-2.5 py-2.5 bg-[color:var(--bp-soft)] dark:bg-[color:var(--bp-soft-dark)]">
+                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-[#64748b] dark:text-[#a9b4c4]">
                     {c.label}
                   </p>
                   <p
-                    className="mt-1 truncate text-xl font-black leading-none tracking-tight"
-                    style={{ color: c.color }}
+                    className={cn(
+                      "mt-1 truncate text-xl font-black leading-none tracking-tight",
+                      c.accent ? "text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]" : "text-slate-900",
+                    )}
                     title={c.value}
                   >
                     {c.value}
@@ -3503,7 +3512,7 @@ function BoardingPassModalBody({
 
             {/* Nama penumpang — fokus utama: petugas mencocokkan dengan KTP/SIM.
                 Tidak di-truncate supaya nama panjang terbaca utuh. */}
-            <div className="relative mt-5 rounded-2xl bg-sky-50 px-5 py-4 ring-2 ring-sky-200">
+            <div className="relative mt-5 rounded-2xl bg-sky-50 px-5 py-4 ring-2 ring-sky-200 dark:ring-sky-400/30">
               <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-sky-700">
                 <IdCard className="h-4 w-4" />
                 Nama penumpang · cocokkan dengan identitas
@@ -3524,7 +3533,7 @@ function BoardingPassModalBody({
                 <p className="text-3xl font-black leading-none tracking-tight text-slate-900">
                   {flight.originAirport}
                 </p>
-                <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
+                <p className="mt-1 truncate text-[12px] font-semibold text-[#64748b] dark:text-[#a9b4c4]">
                   {originCity}
                 </p>
               </div>
@@ -3539,7 +3548,7 @@ function BoardingPassModalBody({
                   </span>
                   <span className="h-px w-8 border-t-2 border-dashed border-slate-300 sm:w-14" />
                 </div>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#64748b] dark:text-[#a9b4c4]">
                   {shortDate} · {flight.departureTime}
                 </p>
               </div>
@@ -3547,7 +3556,7 @@ function BoardingPassModalBody({
                 <p className="text-3xl font-black leading-none tracking-tight text-slate-900">
                   {flight.destinationAirport}
                 </p>
-                <p className="mt-1 truncate text-[12px] font-semibold text-slate-500">
+                <p className="mt-1 truncate text-[12px] font-semibold text-[#64748b] dark:text-[#a9b4c4]">
                   {destCity}
                 </p>
               </div>
@@ -3555,9 +3564,9 @@ function BoardingPassModalBody({
 
             {/* Detail */}
             <div className="relative mt-4 grid grid-cols-3 gap-x-4 gap-y-3 sm:grid-cols-5">
-              <DetailCell label="PNR" value={parsed.pnr} mono accent={accentText} />
+              <DetailCell label="PNR" value={parsed.pnr} mono accent />
               <DetailCell label="Tiket" value={parsed.ticketNumber} mono />
-              <DetailCell label="Kelas" value={isBusiness ? "Business" : "Economy"} accent={isBusiness ? "#92400e" : undefined} />
+              <DetailCell label="Kelas" value={isBusiness ? "Business" : "Economy"} accent={isBusiness} />
               <DetailCell label="Grup" value={group} />
               <DetailCell label="Seq" value={seq} mono />
             </div>
@@ -3565,37 +3574,37 @@ function BoardingPassModalBody({
 
           {/* Perforasi */}
           <div className="relative hidden md:block">
-            <div className="absolute -left-2 top-0 h-4 w-4 -translate-y-1/2 rounded-full bg-slate-100" />
-            <div className="absolute -left-2 bottom-0 h-4 w-4 translate-y-1/2 rounded-full bg-slate-100" />
+            <div className="absolute -left-2 top-0 h-4 w-4 -translate-y-1/2 rounded-full bg-[#f1f5f9] dark:bg-surface" />
+            <div className="absolute -left-2 bottom-0 h-4 w-4 translate-y-1/2 rounded-full bg-[#f1f5f9] dark:bg-surface" />
             <div className="mx-auto h-full w-px border-l-2 border-dashed border-slate-300" />
           </div>
 
           {/* ── Stub: info yang dicari penumpang (layar lebar saja; di HP
               gate & kursi tampil di bawah header kartu) ── */}
-          <div className="relative hidden flex-col overflow-hidden p-5 md:flex" style={{ backgroundColor: softBg }}>
-            <Plane className="pointer-events-none absolute -right-5 bottom-3 h-28 w-28 rotate-[18deg] text-white/50" />
+          <div className="relative hidden flex-col overflow-hidden p-5 md:flex bg-[color:var(--bp-soft)] dark:bg-[color:var(--bp-soft-dark)]">
+            <Plane className="pointer-events-none absolute -right-5 bottom-3 h-28 w-28 rotate-[18deg] text-white/50 dark:text-white/[0.04]" />
 
-            <span className="relative inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow">
+            <span className="relative inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-700 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow">
               <CheckCircle2 className="h-3 w-3" /> Terverifikasi
             </span>
 
             <div className="relative mt-4 grid grid-cols-1 gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#64748b] dark:text-[#a9b4c4]">
                   Gate
                 </p>
                 <p
                   className={cn(
                     "font-black leading-none tracking-tight",
+                    "text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]",
                     gate.length > 4 ? "text-3xl" : "text-5xl",
                   )}
-                  style={{ color: accentText }}
                 >
                   {gate}
                 </p>
               </div>
-              <div className="border-t border-black/10 pt-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
+              <div className="border-t border-black/10 pt-3 dark:border-white/10">
+                <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-[#64748b] dark:text-[#a9b4c4]">
                   Kursi
                 </p>
                 <p className="text-4xl font-black leading-none tracking-tight text-slate-900">
@@ -3604,8 +3613,8 @@ function BoardingPassModalBody({
               </div>
             </div>
 
-            <div className="relative mt-auto rounded-2xl bg-white/75 px-3.5 py-2.5 ring-1 ring-white/80 backdrop-blur">
-              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+            <div className="relative mt-auto rounded-2xl bg-white/75 px-3.5 py-2.5 ring-1 ring-white/80 backdrop-blur dark:bg-black/20 dark:ring-white/10">
+              <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#64748b] dark:text-[#a9b4c4]">
                 <Clock className="h-3 w-3" /> Berangkat {flight.departureTime}
               </p>
               <p className="mt-0.5 text-[15px] font-black leading-tight text-slate-900">
@@ -3616,12 +3625,12 @@ function BoardingPassModalBody({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-2.5">
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/70 px-5 py-2.5 dark:bg-white/[0.03]">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-[#64748b] dark:text-[#a9b4c4]">
             <ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />
             Divalidasi SIPANDAI · {new Date(last.event.scannedAt).toLocaleTimeString("id-ID")}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-[13px] font-black" style={{ color: accentText }}>
+          <span className="inline-flex items-center gap-1.5 text-[13px] font-black text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]">
             Silakan menuju Gate {gate}
             <ArrowRight className="h-4 w-4" />
           </span>
@@ -3675,19 +3684,20 @@ function DetailCell({
   label: string;
   value: string;
   mono?: boolean;
-  accent?: string;
+  /** Pakai warna aksen maskapai card (ikut mode malam). */
+  accent?: boolean;
 }) {
   return (
     <div className="min-w-0">
-      <p className="text-[9px] font-semibold uppercase tracking-widest text-slate-400">
+      <p className="text-[9px] font-semibold uppercase tracking-widest text-[#94a3b8]">
         {label}
       </p>
       <p
         className={cn(
           "mt-0.5 truncate text-sm font-bold leading-tight",
           mono && "font-mono tracking-tight",
+          accent ? "text-[color:var(--bp-accent)] dark:text-[color:var(--bp-accent-dark)]" : "text-slate-900",
         )}
-        style={{ color: accent ?? "#0f172a" }}
         title={value}
       >
         {value}
@@ -3708,6 +3718,20 @@ function softTint(code: string): string {
     case "SQ": return "#fef3c7";
     case "MH": return "#dbeafe";
     default: return "#f1f5f9";
+  }
+}
+
+/** Varian terang `accentTextColor` untuk teks di atas card mode malam. */
+function accentTextColorDark(code: string): string {
+  switch (code) {
+    case "GA": case "SAA": return "#7dd3fc";
+    case "JT": case "QZ": case "SJ": case "XT": case "AK": return "#fca5a5";
+    case "ID": case "MH": return "#93c5fd";
+    case "QG": case "IP": return "#6ee7b7";
+    case "IW": return "#fdba74";
+    case "IU": return "#f9a8d4";
+    case "SQ": return "#fcd34d";
+    default: return "#e2e8f0";
   }
 }
 
