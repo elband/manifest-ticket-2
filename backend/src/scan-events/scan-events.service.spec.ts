@@ -158,4 +158,22 @@ describe("ScanEventsService.pushFromDevice (token perangkat)", () => {
     await expect(svc.pushFromDevice(device, dto(), null)).rejects.toThrow("tidak dikenal");
     expect(prisma.scanEvent.create).not.toHaveBeenCalled();
   });
+
+  it("teks kepanjangan dipotong agar muat kolom (bukan 500), pendek dibiarkan", async () => {
+    const { prisma, svc } = setup();
+    const longMsg =
+      "Ditolak: flight ID6255 belum bisa divalidasi. Scan dibuka 4 jam sebelum jadwal berangkat." +
+      " Barcode ini juga pernah di-scan (ditolak karena flight tidak dikenal) pada 05 Nov 2026 pukul 10.23.45.".repeat(60);
+    await svc.pushFromDevice(
+      device,
+      dto({ message: longMsg, pnr: "P".repeat(300), passengerName: "N".repeat(300), seat: "12A" }),
+      null,
+    );
+    const data = prisma.scanEvent.create.mock.calls[0][0].data;
+    expect(data.message).toHaveLength(4000);
+    expect(data.pnr).toHaveLength(191);
+    expect(data.passengerName).toHaveLength(255);
+    expect(data.seat).toBe("12A");
+    expect(data.rawBarcode).toBe("M1X");
+  });
 });

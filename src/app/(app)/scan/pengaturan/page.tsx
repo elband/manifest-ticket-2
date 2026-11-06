@@ -34,6 +34,7 @@ import {
   describeApiOutbox,
   flushApiOutbox,
   getApiOutboxSummary,
+  retryAllApiFailed,
   subscribeApiOutbox,
 } from "@/lib/api/outbox";
 import { AppSettings, getSettings, saveSettings, subscribeSettings } from "@/lib/settings";
@@ -680,7 +681,9 @@ function DeviceSection() {
 
   const sendNow = async () => {
     setSending(true);
-    const r = await flushApiOutbox();
+    // Tombol ini = coba ulang manual: data yang sudah "gagal kirim" ikut dikirim lagi.
+    retryAllApiFailed();
+    const r = await flushApiOutbox({ maxItems: 100 });
     setSending(false);
     setSum(getApiOutboxSummary());
     if (r.sent > 0) toast.success(`${r.sent} scan terkirim ke server.`);

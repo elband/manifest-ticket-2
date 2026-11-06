@@ -10,6 +10,18 @@ function isPrivileged(role: string): boolean {
   return role === "admin" || role === "supervisor";
 }
 
+/**
+ * Potong teks agar muat di kolomnya (lihat schema.prisma). Nilai kepanjangan
+ * membuat MySQL menolak INSERT (P2000) → 500 → item outbox kiosk tak pernah
+ * terkirim. Scan tetap dicatat walau teks pelengkapnya terpotong.
+ */
+function fit<T extends string | null | undefined>(value: T, max: number): T | string {
+  return typeof value === "string" && value.length > max ? value.slice(0, max) : value;
+}
+
+/** Panjang kolom ScanEvent di schema.prisma (String polos = VARCHAR(191)). */
+const COL = { short: 191, name: 255, raw: 512, message: 4000 } as const;
+
 @Injectable()
 export class ScanEventsService {
   constructor(private prisma: PrismaService) {}
@@ -78,19 +90,19 @@ export class ScanEventsService {
       created = await this.prisma.scanEvent.create({
         data: {
           eventId: dto.eventId,
-          rawBarcode: dto.rawBarcode,
-          flightNumber: dto.flightNumber ?? null,
-          pnr: dto.pnr ?? null,
-          ticketNumber: dto.ticketNumber ?? null,
-          seat: dto.seat ?? null,
-          passengerName: dto.passengerName ?? null,
+          rawBarcode: fit(dto.rawBarcode, COL.raw),
+          flightNumber: fit(dto.flightNumber ?? null, COL.short),
+          pnr: fit(dto.pnr ?? null, COL.short),
+          ticketNumber: fit(dto.ticketNumber ?? null, COL.short),
+          seat: fit(dto.seat ?? null, COL.short),
+          passengerName: fit(dto.passengerName ?? null, COL.name),
           resultStatus: dto.resultStatus,
-          message: dto.message ?? null,
+          message: fit(dto.message ?? null, COL.message),
           scannedAt,
           station: dto.station,
-          facePhotoPath,
-          ktpStatus: dto.ktpStatus ?? null,
-          ktpName: dto.ktpName ?? null,
+          facePhotoPath: fit(facePhotoPath, COL.raw),
+          ktpStatus: fit(dto.ktpStatus ?? null, COL.short),
+          ktpName: fit(dto.ktpName ?? null, COL.name),
           ktpSimilarity: dto.ktpSimilarity ?? null,
           ktpCapturedAt: dto.ktpCapturedAt ? new Date(dto.ktpCapturedAt) : null,
           flightId,
@@ -117,10 +129,11 @@ export class ScanEventsService {
     if (dto.resultStatus === "VALID_FLIGHT" && flightId) {
       try {
         await this.upsertManifestPassenger(flightId, {
-          pnr: dto.pnr ?? null,
-          ticketNumber: dto.ticketNumber ?? null,
-          seat: dto.seat ?? null,
-          passengerName: dto.passengerName ?? null,
+          pnr: created.pnr,
+          ticketNumber: created.ticketNumber,
+          seat: created.seat,
+          // Kolom manifest masih VARCHAR(191).
+          passengerName: fit(created.passengerName, COL.short),
           scannedAt,
         });
       } catch {

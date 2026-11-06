@@ -105,6 +105,15 @@ export function isServerUnreachable(status: number | null | undefined): boolean 
 }
 
 /**
+ * Server hidup tapi gagal memproses item INI (500, 501, 505…): kemungkinan
+ * datanya yang memicu bug server, bukan servernya yang mati. Jatah percobaan
+ * tidak dikurangi (data tidak dibuang), tapi batch tidak dihentikan.
+ */
+export function isServerRejection(status: number | null | undefined): boolean {
+  return !!status && status >= 500 && !isServerUnreachable(status);
+}
+
+/**
  * Pulihkan antrean saat aplikasi mulai:
  *  - `syncing` → `pending` (aplikasi tertutup di tengah pengiriman);
  *  - `failed` yang bukan karena data ditolak (versi lama menandai gangguan
@@ -422,10 +431,18 @@ export async function flushApiOutbox(opts?: {
   let sent = 0;
   let failed = 0;
   let skipped = 0;
+  let serverRejections = 0;
 
   try {
     let queue = readQueue();
-    const targets = queue.filter((q) => q.status === "pending").slice(0, max);
+    // Item yang terakhir dijawab error server (mis. 500) dikirim paling akhir,
+    // supaya satu data bermasalah tidak menahan ratusan scan di belakangnya.
+    const targets = queue
+      .filter((q) => q.status === "pending")
+      .map((q, i) => ({ q, i, late: isServerRejection(q.lastStatus) ? 1 : 0 }))
+      .sort((a, b) => a.late - b.late || a.i - b.i)
+      .map((x) => x.q)
+      .slice(0, max);
 
     for (const item of targets) {
       queue = readQueue().map((q) =>
@@ -456,6 +473,7 @@ export async function flushApiOutbox(opts?: {
           reachable: true,
         });
         sent += 1;
+        serverRejections = 0;
       } else {
         const kind = classifyPushError(result.status);
         const attempts = kind === "permanent" ? item.attempts + 1 : item.attempts;
@@ -483,8 +501,13 @@ export async function flushApiOutbox(opts?: {
         if (nextStatus === "failed") failed += 1;
         else skipped += 1;
         // Jaringan/server terganggu atau token habis: hentikan batch, coba
-        // lagi di tick berikutnya (atau setelah login ulang).
-        if (kind !== "permanent") break;
+        // lagi di tick berikutnya (atau setelah login ulang). Error server
+        // untuk item ini saja (mis. 500) → lanjut ke item berikutnya.
+        // 3x berturut-turut = server yang bermasalah (mis. database mati) → berhenti.
+        serverRejections = isServerRejection(result.status) ? serverRejections + 1 : 0;
+        if (kind !== "permanent" && (!isServerRejection(result.status) || serverRejections >= 3)) {
+          break;
+        }
       }
     }
   } finally {

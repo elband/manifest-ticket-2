@@ -209,6 +209,43 @@ describe("flushApiOutbox saat jaringan terganggu", () => {
     expect(s.needsLogin).toBe(true);
   });
 
+  it("satu item selalu 500 → tidak menahan item lain, tetap pending & dikirim paling akhir", async () => {
+    enqueueScanPush(scan("scn_bad"));
+    enqueueScanPush(scan("scn_b"));
+    enqueueScanPush(scan("scn_c"));
+    pushMock.mockImplementation(async (fields: { eventId: string }) =>
+      fields.eventId === "scn_bad"
+        ? { ok: false, status: 500, error: "Internal server error" }
+        : { ok: true, status: 201, data: {} },
+    );
+
+    await flushApiOutbox();
+
+    let s = getApiOutboxSummary();
+    expect(s.total).toBe(1); // scn_b & scn_c terkirim
+    expect(s.pending).toBe(1);
+    expect(s.failed).toBe(0); // data tidak dibuang
+
+    // Item baru masuk → dikirim lebih dulu daripada item yang barusan 500.
+    enqueueScanPush(scan("scn_d"));
+    pushMock.mockClear();
+    await flushApiOutbox();
+    const order = pushMock.mock.calls.map((c) => (c[0] as { eventId: string }).eventId);
+    expect(order).toEqual(["scn_d", "scn_bad"]);
+    s = getApiOutboxSummary();
+    expect(s.total).toBe(1);
+  });
+
+  it("server error terus-menerus (mis. database mati) → batch berhenti setelah 3 item", async () => {
+    for (const id of ["a", "b", "c", "d", "e"]) enqueueScanPush(scan(`scn_${id}`));
+    pushMock.mockResolvedValue({ ok: false, status: 500, error: "Internal server error" });
+
+    await flushApiOutbox();
+
+    expect(pushMock).toHaveBeenCalledTimes(3);
+    expect(getApiOutboxSummary().pending).toBe(5);
+  });
+
   it("data ditolak backend (400) → failed setelah 5 percobaan", async () => {
     enqueueScanPush(scan("scn_a"));
     pushMock.mockResolvedValue({ ok: false, status: 400, error: "resultStatus invalid" });

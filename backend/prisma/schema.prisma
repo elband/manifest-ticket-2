@@ -87,20 +87,23 @@ model FlightPassenger {
 model ScanEvent {
   id               String   @id @default(cuid())
   eventId          String   @unique
-  rawBarcode       String
+  // String polos = VARCHAR(191) di MySQL. Kolom di bawah bisa lebih panjang
+  // (barcode s/d 512, pesan + catatan "pernah di-scan") → nilai kepanjangan
+  // ditolak MySQL (P2000) dan push scan gagal 500, menahan antrean kiosk.
+  rawBarcode       String   @db.VarChar(512)
   flightNumber     String?
   pnr              String?
   ticketNumber     String?
   seat             String?
-  passengerName    String?
+  passengerName    String?  @db.VarChar(255)
   resultStatus     String
-  message          String?
+  message          String?  @db.Text
   scannedAt        DateTime
   station          String
 
-  facePhotoPath    String?
+  facePhotoPath    String?  @db.VarChar(512)
   ktpStatus        String?
-  ktpName          String?
+  ktpName          String?  @db.VarChar(255)
   ktpSimilarity    Float?
   ktpCapturedAt    DateTime?
 

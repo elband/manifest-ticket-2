@@ -54,11 +54,10 @@ export class ScanEventsController {
       limits: {
         fileSize: Number(process.env.UPLOAD_MAX_SIZE ?? 1_048_576),
       },
+      // Format foto tak dikenal → foto dilewati, scan tetap dicatat. Dulu
+      // dilempar Error biasa → 500 → item outbox menahan antrean kiosk.
       fileFilter: (_req, file, cb) => {
-        if (!/^image\/(jpeg|png|webp)$/.test(file.mimetype)) {
-          return cb(new Error("Unsupported image type"), false);
-        }
-        cb(null, true);
+        cb(null, /^image\/(jpeg|png|webp)$/.test(file.mimetype));
       },
     }),
   )
