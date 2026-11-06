@@ -23,8 +23,6 @@ import {
   ArrowRight,
   Volume2,
   VolumeX,
-  RotateCcw,
-  Settings2,
   Sparkles,
   Cloud,
   CloudOff,
@@ -39,10 +37,6 @@ import {
   Minimize2,
   Maximize,
   Minimize,
-  UserRoundCheck,
-  Delete,
-  CornerDownLeft,
-  AlertCircle,
   History,
   Search,
   Camera,
@@ -117,7 +111,6 @@ import {
   type DeviceState,
 } from "@/lib/api/client";
 import { logout } from "@/lib/auth";
-import { signInWithPin } from "@/lib/pinLogin";
 import {
   getSettings,
   saveSettings,
@@ -446,13 +439,10 @@ export default function KioskPage() {
   // Konfirmasi aksi perangkat: tutup / perkecil browser, matikan perangkat.
   const [powerConfirm, setPowerConfirm] = React.useState<PowerAction | null>(null);
   const [powerBusy, setPowerBusy] = React.useState(false);
-  // Ganti petugas lewat PIN tanpa keluar kiosk. Selama modal PIN terbuka,
-  // input scanner tersembunyi dijeda supaya digit PIN tidak terkirim sebagai scan.
-  const [officerSwitchOpen, setOfficerSwitchOpen] = React.useState(false);
-  // Riwayat scan (laci kanan). Kolom cari di dalamnya juga butuh keyboard,
-  // jadi scanner dijeda dengan cara yang sama seperti keypad PIN.
+  // Riwayat scan (laci kanan). Kolom cari di dalamnya butuh keyboard, jadi
+  // selama laci terbuka input scanner tersembunyi dijeda.
   const [historyOpen, setHistoryOpen] = React.useState(false);
-  const scanPaused = officerSwitchOpen || historyOpen;
+  const scanPaused = historyOpen;
   const scanPausedRef = React.useRef(false);
   React.useEffect(() => {
     scanPausedRef.current = scanPaused;
@@ -714,8 +704,8 @@ export default function KioskPage() {
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        // Modal PIN menutup dirinya sendiri lewat Escape (jangan keluar kiosk).
-        if (ktpFlowOpen || officerSwitchOpen) return;
+        // Modal KTP menutup dirinya sendiri lewat Escape (jangan keluar kiosk).
+        if (ktpFlowOpen) return;
         if (modalOpen) setModalOpen(false);
         else if (historyOpen) setHistoryOpen(false);
         else router.push("/scan");
@@ -723,7 +713,7 @@ export default function KioskPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [router, modalOpen, ktpFlowOpen, officerSwitchOpen, historyOpen]);
+  }, [router, modalOpen, ktpFlowOpen, historyOpen]);
 
   React.useEffect(() => {
     return () => {
@@ -737,12 +727,18 @@ export default function KioskPage() {
   // Lama card hasil scan tampil (Pengaturan → Mode Kiosk). 0 = tanpa batas
   // waktu: card tetap tampil sampai ditutup petugas atau diganti scan berikutnya.
   const modalAutoCloseMs = Math.max(0, rawSettings.kioskResultDurationSec) * 1000;
+  // Card boarding pass VALID tidak pernah tutup otomatis: petugas yang sibuk
+  // melayani antrean tetap bisa membaca & memutuskan identitas tanpa dikejar
+  // waktu. Card baru menggantikannya saat scan berikutnya masuk.
+  const lastIsBoardingPass =
+    last?.event.resultStatus === "VALID_FLIGHT" && !!last.flight && !!last.parsed;
+  const resultAutoCloseMs = lastIsBoardingPass ? 0 : modalAutoCloseMs;
 
   React.useEffect(() => {
-    if (!modalOpen || modalAutoCloseMs <= 0) return;
-    const t = setTimeout(() => setModalOpen(false), modalAutoCloseMs);
+    if (!modalOpen || resultAutoCloseMs <= 0) return;
+    const t = setTimeout(() => setModalOpen(false), resultAutoCloseMs);
     return () => clearTimeout(t);
-  }, [modalOpen, modalAutoCloseMs, last?.event.id]);
+  }, [modalOpen, resultAutoCloseMs, last?.event.id]);
 
   // Hasil cek PAS: hitung mundur baru mulai setelah data tampil (bukan saat memuat).
   const pasPhaseKey = pasCheck ? `${pasCheck.key}-${pasCheck.phase}` : null;
@@ -1157,7 +1153,6 @@ export default function KioskPage() {
     void submit(raw);
   };
 
-  const exitKiosk = () => router.push("/scan");
   const cancelPower = () => {
     setPowerConfirm(null);
     inputRef.current?.focus();
@@ -1239,24 +1234,6 @@ export default function KioskPage() {
     } finally {
       setSyncing(false);
     }
-  };
-
-  const handleReset = () => {
-    setModalOpen(false);
-    setLast(null);
-    setSessionStats({ valid: 0, duplicate: 0, rejected: 0 });
-    setRecent([]);
-    setValue("");
-    if (lastFaceUrlRef.current) {
-      URL.revokeObjectURL(lastFaceUrlRef.current);
-      lastFaceUrlRef.current = null;
-    }
-    if (pendingKtp) {
-      URL.revokeObjectURL(pendingKtp.photoUrl);
-      setPendingKtp(null);
-    }
-    toast.success("Stats & riwayat tampilan dikosongkan", "Reset");
-    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const handleDemoScan = async () => {
@@ -1358,6 +1335,33 @@ export default function KioskPage() {
     setTimeout(() => inputRef.current?.focus(), 0);
   };
 
+  // Card boarding pass VALID yang tertimpa scan berikutnya tanpa ditolak
+  // petugas → otomatis dianggap sesuai (auto_pass). Petugas yang sibuk melayani
+  // antrean cukup menekan "Tidak sesuai" bila ada masalah; status auto_pass
+  // dibedakan dari manual_pass agar audit tetap jujur.
+  const prevLastRef = React.useRef<LastResult | null>(null);
+  React.useEffect(() => {
+    const prev = prevLastRef.current;
+    prevLastRef.current = last;
+    if (!prev || !last || prev.event.id === last.event.id) return;
+    if (prev.event.resultStatus !== "VALID_FLIGHT" || !prev.flight || !prev.parsed) return;
+    // Baca ulang dari storage: keputusan bisa saja sudah tercatat lewat jalur lain.
+    const stored = getScanEvents().find((e) => e.id === prev.event.id);
+    if (!stored || stored.resultStatus !== "VALID_FLIGHT" || stored.ktpVerification) return;
+    const decidedAt = new Date().toISOString();
+    const v: KtpVerification = { status: "auto_pass", ocrName: null, capturedAt: decidedAt };
+    updateScanEvent(stored.id, { ktpVerification: v });
+    try {
+      enqueueIdentityDecision({ ...stored, ktpVerification: v }, true, decidedAt, true);
+      flushApiOutbox().catch(() => {});
+    } catch {
+      /* sync backend tidak boleh mengganggu alur scan */
+    }
+    setRecent(getScanEvents().slice(0, 6));
+    const today = decidedAt.slice(0, 10);
+    setTodayScans(getScanEvents().filter((e) => e.scannedAt.slice(0, 10) === today));
+  }, [last]);
+
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
 
   // Sebelum mounted: render shell kosong (sama di server & client) → no mismatch.
@@ -1431,10 +1435,6 @@ export default function KioskPage() {
             soundOn={settings.soundOn}
             onToggleSound={toggleSound}
             onToggleTheme={toggleTheme}
-            onReset={handleReset}
-            onSwitchOfficer={() => setOfficerSwitchOpen(true)}
-            onExit={exitKiosk}
-            onOpenSettings={() => router.push("/scan/pengaturan")}
             onCloseBrowser={() => setPowerConfirm("close")}
             onShutdown={
               agentActions.includes("shutdown")
@@ -1530,8 +1530,9 @@ export default function KioskPage() {
               <ModalCloseFooter
                 onClose={() => setModalOpen(false)}
                 barGradient={barGradient}
-                durationMs={modalAutoCloseMs}
+                durationMs={resultAutoCloseMs}
                 resetKey={last.event.id}
+                idleLabel={isValid ? "Tampil sampai scan berikutnya" : undefined}
               />
             }
           >
@@ -1704,17 +1705,6 @@ export default function KioskPage() {
         scans={todayScans}
         flights={todayFlights}
         currentOfficer={session}
-      />
-
-      <OfficerSwitchModal
-        open={officerSwitchOpen}
-        currentName={session?.name ?? null}
-        onClose={() => setOfficerSwitchOpen(false)}
-        onSwitched={(user) => {
-          setSession(user);
-          setOfficerSwitchOpen(false);
-          toast.success(`Sekarang bertugas: ${user.name}`, "Petugas berganti");
-        }}
       />
 
       <KtpVerifyModal
@@ -2845,189 +2835,11 @@ function HistoryRow({
   );
 }
 
-/* ─────────────── Ganti petugas (keypad PIN) ─────────────── */
-
-const OFFICER_PIN_MAX = 6;
-
-/**
- * Keypad PIN untuk mengganti petugas tanpa keluar kiosk. Sesi petugas lama
- * baru diganti bila PIN berhasil; gagal/batal → petugas lama tetap bertugas.
- * PIN juga bisa diketik lewat keyboard (angka, Backspace, Enter).
- */
-function OfficerSwitchModal({
-  open,
-  currentName,
-  onClose,
-  onSwitched,
-}: {
-  open: boolean;
-  currentName: string | null;
-  onClose: () => void;
-  onSwitched: (user: SessionUser) => void;
-}) {
-  const [pin, setPin] = React.useState("");
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!open) return;
-    setPin("");
-    setError(null);
-    setLoading(false);
-  }, [open]);
-
-  const pressDigit = (d: string) => {
-    setError(null);
-    setPin((p) => (p.length >= OFFICER_PIN_MAX ? p : p + d));
-  };
-  const pressBackspace = () => {
-    setError(null);
-    setPin((p) => p.slice(0, -1));
-  };
-
-  const submit = async () => {
-    if (loading || pin.length < 4) return;
-    setLoading(true);
-    setError(null);
-    const res = await signInWithPin(pin);
-    setLoading(false);
-    if (!res.ok) {
-      setError(res.error);
-      setPin("");
-      return;
-    }
-    onSwitched(res.user);
-  };
-
-  // Ref ke submit terbaru supaya listener keyboard tidak memakai state basi.
-  const submitRef = React.useRef(submit);
-  submitRef.current = submit;
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (/^[0-9]$/.test(e.key)) {
-        e.preventDefault();
-        pressDigit(e.key);
-      } else if (e.key === "Backspace" || e.key === "Delete") {
-        e.preventDefault();
-        pressBackspace();
-      } else if (e.key === "Enter") {
-        // preventDefault juga mencegah Enter "mengklik" tombol yang sedang fokus.
-        e.preventDefault();
-        void submitRef.current();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
-
-  const keyClass =
-    "flex h-14 items-center justify-center rounded-xl bg-slate-100 text-2xl font-bold text-kiosk-asphalt transition active:scale-95 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/10 dark:text-white dark:hover:bg-white/15";
-
-  return (
-    <Modal
-      open={open}
-      onClose={() => {
-        if (!loading) onClose();
-      }}
-      tone="info"
-      size="sm"
-      title="Ganti petugas"
-      description={
-        currentName
-          ? `Sekarang bertugas: ${currentName}. Masukkan PIN petugas pengganti.`
-          : "Masukkan PIN petugas yang akan bertugas."
-      }
-      icon={<UserRoundCheck className="h-5 w-5" />}
-    >
-      <div className="space-y-4 p-1 font-sign">
-        {/* Indikator digit PIN */}
-        <div className="flex items-center justify-center gap-3" aria-live="polite">
-          <span className="sr-only">{pin.length} digit diisi</span>
-          {Array.from({ length: OFFICER_PIN_MAX }).map((_, i) => (
-            <span
-              key={i}
-              aria-hidden
-              className={cn(
-                "h-3.5 w-3.5 rounded-full transition",
-                i < pin.length
-                  ? "bg-kiosk-sign"
-                  : "bg-slate-200 dark:bg-white/15",
-              )}
-            />
-          ))}
-        </div>
-
-        <div className="grid grid-cols-3 gap-2.5">
-          {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => pressDigit(d)}
-              disabled={loading}
-              className={keyClass}
-            >
-              {d}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={pressBackspace}
-            disabled={loading || pin.length === 0}
-            aria-label="Hapus"
-            className={keyClass}
-          >
-            <Delete className="h-6 w-6" />
-          </button>
-          <button
-            type="button"
-            onClick={() => pressDigit("0")}
-            disabled={loading}
-            className={keyClass}
-          >
-            0
-          </button>
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={loading || pin.length < 4}
-            aria-label="Masuk"
-            className="flex h-14 items-center justify-center rounded-xl bg-kiosk-sign text-white transition active:scale-95 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {loading ? (
-              <Loader2 className="h-6 w-6 animate-spin" />
-            ) : (
-              <CornerDownLeft className="h-6 w-6" />
-            )}
-          </button>
-        </div>
-
-        {error ? (
-          <p className="flex items-start gap-2 rounded-xl bg-rose-50 px-3 py-2 text-[14px] text-rose-700 ring-1 ring-rose-200 dark:bg-rose-500/10 dark:text-rose-200 dark:ring-rose-500/30">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-            {error}
-          </p>
-        ) : (
-          <p className="text-center text-[13px] text-slate-500 dark:text-white/55">
-            PIN 4–6 digit. Bisa diketik lewat keyboard, Enter untuk masuk.
-          </p>
-        )}
-      </div>
-    </Modal>
-  );
-}
-
 function KioskMenu({
   isDark,
   soundOn,
   onToggleSound,
   onToggleTheme,
-  onReset,
-  onSwitchOfficer,
-  onExit,
-  onOpenSettings,
   onCloseBrowser,
   onShutdown,
   onMinimizeBrowser,
@@ -3037,13 +2849,6 @@ function KioskMenu({
   soundOn: boolean;
   onToggleSound: () => void;
   onToggleTheme: () => void;
-  /** Kosongkan statistik & riwayat tampilan kiosk. */
-  onReset: () => void;
-  /** Buka keypad PIN untuk mengganti petugas yang bertugas di kiosk. */
-  onSwitchOfficer: () => void;
-  onExit: () => void;
-  /** Profil petugas & setelan perangkat (/scan/pengaturan). */
-  onOpenSettings: () => void;
   onCloseBrowser: () => void;
   /** Hanya ada bila agen kiosk lokal terdeteksi. */
   onShutdown?: () => void;
@@ -3136,15 +2941,6 @@ function KioskMenu({
           className="absolute right-0 top-full z-30 mt-2 w-56 overflow-hidden rounded-lg bg-white p-1.5 shadow-xl ring-1 ring-slate-200 dark:bg-kiosk-asphalt dark:ring-kiosk-line"
         >
           <MenuItem
-            icon={<UserRoundCheck className="h-4 w-4" />}
-            label="Ganti petugas"
-            onClick={() => {
-              setOpen(false);
-              onSwitchOfficer();
-            }}
-          />
-          <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
-          <MenuItem
             icon={soundOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             label={soundOn ? "Suara feedback: Aktif" : "Suara feedback: Mati"}
             onClick={onToggleSound}
@@ -3173,32 +2969,7 @@ function KioskMenu({
               }}
             />
           )}
-          <MenuItem
-            icon={<Settings2 className="h-4 w-4" />}
-            label="Pengaturan"
-            onClick={() => {
-              setOpen(false);
-              onOpenSettings();
-            }}
-          />
-          <MenuItem
-            icon={<RotateCcw className="h-4 w-4" />}
-            label="Reset statistik tampilan"
-            onClick={() => {
-              setOpen(false);
-              onReset();
-            }}
-          />
           <div className="my-1 h-px bg-slate-200/70 dark:bg-white/10" />
-          <MenuItem
-            icon={<X className="h-4 w-4" />}
-            label="Keluar Kiosk"
-            danger
-            onClick={() => {
-              setOpen(false);
-              onExit();
-            }}
-          />
           {onMinimizeBrowser && (
             <MenuItem
               icon={<Minimize2 className="h-4 w-4" />}
@@ -3480,11 +3251,14 @@ function ModalCloseFooter({
   barGradient,
   durationMs,
   resetKey,
+  idleLabel = "Tampil sampai ditutup",
 }: {
   onClose: () => void;
   barGradient: string;
   durationMs: number;
   resetKey: string;
+  /** Teks pengganti hitung mundur saat card tanpa batas waktu. */
+  idleLabel?: string;
 }) {
   const [remaining, setRemaining] = React.useState(Math.ceil(durationMs / 1000));
   React.useEffect(() => {
@@ -3504,7 +3278,7 @@ function ModalCloseFooter({
     <div className="flex w-full items-center gap-3">
       {durationMs <= 0 ? (
       <p className="flex-1 text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-ink-subtle">
-        Tampil sampai ditutup
+        {idleLabel}
       </p>
       ) : (
       <div className="flex-1">
@@ -3560,7 +3334,8 @@ function KtpMatchBadge({ v }: { v: KtpVerification }) {
     );
   }
   const pct = v.similarity != null ? Math.round(v.similarity * 100) : null;
-  const ok = v.status === "matched" || v.status === "manual_pass";
+  const ok =
+    v.status === "matched" || v.status === "manual_pass" || v.status === "auto_pass";
   return (
     <div
       className={cn(
@@ -3578,7 +3353,9 @@ function KtpMatchBadge({ v }: { v: KtpVerification }) {
             ? "dicek manual petugas · sesuai"
             : v.status === "manual_reject"
               ? "dicek manual petugas · tidak sesuai"
-              : "tidak terbaca")}
+              : v.status === "auto_pass"
+                ? "sesuai otomatis · tidak ditolak petugas"
+                : "tidak terbaca")}
       </span>
       {pct != null && (
         <span className="ml-auto flex shrink-0 items-center gap-1.5">

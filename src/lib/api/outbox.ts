@@ -25,7 +25,7 @@ export interface ApiOutboxItem {
   fields: ScanPushFields;
   /** Ada → item ini keputusan petugas cek KTP/SIM untuk scan `fields.eventId`
    *  yang sudah terkirim (PATCH), bukan push scan baru. */
-  identity?: { match: boolean; decidedAt: string };
+  identity?: { match: boolean; decidedAt: string; auto?: boolean };
   faceCaptureId: string | null;
   attempts: number;
   lastAttemptAt: string | null;
@@ -324,6 +324,8 @@ export function enqueueIdentityDecision(
   event: ScanEvent,
   match: boolean,
   decidedAt: string,
+  /** Sesuai otomatis (card tertimpa scan berikutnya), bukan keputusan petugas. */
+  auto = false,
 ): void {
   if (!isBrowser()) return;
   if (!getSettings().apiSyncEnabled) return;
@@ -343,7 +345,7 @@ export function enqueueIdentityDecision(
   const item: ApiOutboxItem = {
     id: `${event.id}#identity`,
     fields: toPushFields(event),
-    identity: { match, decidedAt },
+    identity: auto ? { match, decidedAt, auto } : { match, decidedAt },
     faceCaptureId: null,
     attempts: 0,
     lastAttemptAt: null,

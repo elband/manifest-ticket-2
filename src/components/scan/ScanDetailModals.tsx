@@ -111,6 +111,7 @@ const KTP_LABEL: Record<string, string> = {
   mismatch: "Tidak cocok (OCR otomatis)",
   manual_pass: "Sesuai — diputuskan petugas",
   manual_reject: "Tidak sesuai — diputuskan petugas",
+  auto_pass: "Sesuai otomatis — tidak ditolak petugas",
   skipped: "Dilewati",
   ocr_failed: "OCR gagal membaca",
   exempted: "Dikecualikan (tanpa KTP)",

@@ -203,9 +203,14 @@ export class ScanEventsService {
     const decidedAt = new Date(dto.decidedAt);
 
     if (dto.match) {
+      // Sesuai otomatis tak boleh menimpa keputusan/hasil cek KTP yang sudah ada.
+      if (dto.auto && ev.ktpStatus) return ev;
       return this.prisma.scanEvent.update({
         where: { eventId },
-        data: { ktpStatus: "manual_pass", ktpCapturedAt: decidedAt },
+        data: {
+          ktpStatus: dto.auto ? "auto_pass" : "manual_pass",
+          ktpCapturedAt: decidedAt,
+        },
       });
     }
 

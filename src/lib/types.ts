@@ -103,6 +103,7 @@ export type KtpVerificationStatus =
   | "mismatch"
   | "manual_pass"
   | "manual_reject"
+  | "auto_pass" // card tertimpa scan berikutnya tanpa ditolak petugas → dianggap sesuai
   | "skipped"
   | "ocr_failed"
   | "exempted"; // penumpang tanpa KTP — dikonfirmasi petugas

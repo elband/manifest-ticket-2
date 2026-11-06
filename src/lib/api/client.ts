@@ -482,7 +482,7 @@ export async function apiPushScan(
 /** Keputusan petugas cek KTP/SIM untuk scan yang sudah ter-push (idempoten). */
 export async function apiDecideIdentity(
   eventId: string,
-  decision: { match: boolean; decidedAt: string },
+  decision: { match: boolean; decidedAt: string; auto?: boolean },
 ): Promise<ApiResult<unknown>> {
   try {
     const res = await authedFetch(

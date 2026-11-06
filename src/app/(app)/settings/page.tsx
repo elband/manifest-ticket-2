@@ -585,8 +585,8 @@ export default function SettingsPage() {
               <ListRow
                 icon={<Timer className="h-4 w-4" />}
                 iconBg="bg-amber-100 text-amber-700"
-                title="Lama tampil data penumpang"
-                subtitle="Durasi card hasil scan di kiosk sebelum tertutup otomatis."
+                title="Lama tampil hasil scan"
+                subtitle="Durasi card ditolak/duplikat & cek PAS sebelum tertutup otomatis. Card boarding pass valid selalu tampil sampai scan berikutnya."
                 trailing={
                   <KioskResultDurationSelect
                     value={settings.kioskResultDurationSec}
@@ -1023,8 +1023,8 @@ export default function SettingsPage() {
                     />
                     <DataRow
                       icon={<Timer className="h-4 w-4" />}
-                      title="Lama tampil data penumpang"
-                      description="Berapa lama card data penumpang tampil setelah boarding pass di-scan. Pilih “Tanpa batas waktu” agar card tetap tampil sampai ditutup petugas atau diganti scan berikutnya."
+                      title="Lama tampil hasil scan"
+                      description="Berapa lama card hasil scan ditolak/duplikat dan cek kartu PAS tampil. Card boarding pass valid tidak memakai durasi ini — selalu tampil sampai ditutup petugas atau diganti scan berikutnya."
                       action={
                         <KioskResultDurationSelect
                           value={settings.kioskResultDurationSec}

@@ -121,6 +121,14 @@ export class IdentityDecisionDto {
   @ApiProperty({ example: "2026-06-12T08:30:10.000Z" })
   @IsDateString()
   decidedAt!: string;
+
+  @ApiPropertyOptional({
+    description:
+      "true = sesuai otomatis (card tertimpa scan berikutnya tanpa ditolak petugas)",
+  })
+  @IsOptional()
+  @IsBoolean()
+  auto?: boolean;
 }
 
 export class ListScansQuery {

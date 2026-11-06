@@ -743,7 +743,7 @@ function RulesSection({ settings }: { settings: AppSettings }) {
         : "Mengikuti status penerbangan",
     },
     {
-      title: "Lama tampil data penumpang",
+      title: "Lama tampil hasil scan (selain boarding pass valid)",
       value:
         settings.kioskResultDurationSec === 0
           ? "Sampai ditutup"

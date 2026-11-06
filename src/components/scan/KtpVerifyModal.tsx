@@ -64,6 +64,8 @@ function statusLabel(status: KtpVerificationStatus): string {
       return "DIVERIFIKASI MANUAL";
     case "manual_reject":
       return "DITOLAK MANUAL";
+    case "auto_pass":
+      return "SESUAI OTOMATIS";
     case "mismatch":
       return "TIDAK COCOK";
     case "ocr_failed":

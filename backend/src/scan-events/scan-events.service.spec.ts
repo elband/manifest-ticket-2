@@ -50,6 +50,21 @@ describe("ScanEventsService.decideIdentity", () => {
     expect(prisma.flightPassenger.updateMany).not.toHaveBeenCalled();
   });
 
+  it("sesuai otomatis (card tertimpa) → catat ktpStatus auto_pass", async () => {
+    prisma.scanEvent.findUnique.mockResolvedValue(validEvent());
+    await svc.decideIdentity("ev1", { match: true, decidedAt, auto: true }, operator);
+    expect(prisma.scanEvent.update).toHaveBeenCalledWith({
+      where: { eventId: "ev1" },
+      data: { ktpStatus: "auto_pass", ktpCapturedAt: new Date(decidedAt) },
+    });
+  });
+
+  it("sesuai otomatis tak menimpa status KTP yang sudah ada", async () => {
+    prisma.scanEvent.findUnique.mockResolvedValue({ ...validEvent(), ktpStatus: "manual_reject" });
+    await svc.decideIdentity("ev1", { match: true, decidedAt, auto: true }, operator);
+    expect(prisma.scanEvent.update).not.toHaveBeenCalled();
+  });
+
   it("tidak sesuai → turunkan jadi KTP_MISMATCH & hapus penumpang dari manifest", async () => {
     prisma.scanEvent.findUnique.mockResolvedValue(validEvent());
     prisma.scanEvent.findMany.mockResolvedValue([]); // tak ada scan valid lain

@@ -48,6 +48,43 @@ interface ZxingControls {
   stop: () => void;
 }
 
+let invertCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Salinan negatif (warna dibalik) dari frame video. Detektor barcode hanya
+ * mengenali modul gelap di atas latar terang; QR kartu PAS justru putih di
+ * atas merah, jadi perlu dibalik dulu.
+ */
+function invertFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (!w || !h) return null;
+  invertCanvas ??= document.createElement("canvas");
+  const canvas = invertCanvas;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  // Safari lama belum punya ctx.filter → balik piksel manual.
+  const hasFilter = typeof (ctx as { filter?: unknown }).filter === "string";
+  if (hasFilter) {
+    ctx.filter = "invert(1)";
+    ctx.drawImage(video, 0, 0, w, h);
+    ctx.filter = "none";
+    return canvas;
+  }
+  ctx.drawImage(video, 0, 0, w, h);
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = 255 - d[i];
+    d[i + 1] = 255 - d[i + 1];
+    d[i + 2] = 255 - d[i + 2];
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -198,6 +235,9 @@ export function CameraScanner({
     };
 
     const loopNative = () => {
+      // Frame genap dideteksi apa adanya, frame ganjil versi negatifnya —
+      // supaya QR putih di atas latar gelap (kartu PAS) juga terbaca.
+      let inverted = false;
       const detect = async () => {
         const v = videoRef.current;
         const det = detectorRef.current;
@@ -205,8 +245,10 @@ export function CameraScanner({
           rafRef.current = requestAnimationFrame(detect);
           return;
         }
+        inverted = !inverted;
         try {
-          const codes = await det.detect(v);
+          const source = inverted ? invertFrame(v) : v;
+          const codes = source ? await det.detect(source) : [];
           if (codes && codes.length > 0) {
             const code = codes[0];
             emitDecoded(code.rawValue ?? "", code.format);
@@ -220,11 +262,13 @@ export function CameraScanner({
     };
 
     const startZxing = async () => {
-      const [{ BrowserMultiFormatReader }, { DecodeHintType, BarcodeFormat }] =
-        await Promise.all([
-          import("@zxing/browser"),
-          import("@zxing/library"),
-        ]);
+      const [
+        { BrowserMultiFormatReader, HTMLCanvasElementLuminanceSource },
+        { DecodeHintType, BarcodeFormat, BinaryBitmap, HybridBinarizer },
+      ] = await Promise.all([
+        import("@zxing/browser"),
+        import("@zxing/library"),
+      ]);
 
       if (cancelled) return;
 
@@ -242,6 +286,18 @@ export function CameraScanner({
       const reader = new BrowserMultiFormatReader(hints, {
         delayBetweenScanAttempts: 120,
       });
+      // Sama seperti jalur native: selang-seling frame normal & negatif agar
+      // QR putih di atas latar gelap juga terbaca.
+      let invertNext = false;
+      const decodeNormal = reader.decodeFromCanvas.bind(reader);
+      reader.decodeFromCanvas = (canvas: HTMLCanvasElement) => {
+        invertNext = !invertNext;
+        if (!invertNext) return decodeNormal(canvas);
+        const source = new HTMLCanvasElementLuminanceSource(canvas).invert();
+        return reader.decodeBitmap(
+          new BinaryBitmap(new HybridBinarizer(source)),
+        );
+      };
 
       const v = videoRef.current;
       if (!v) return;
