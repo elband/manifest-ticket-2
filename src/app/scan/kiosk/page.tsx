@@ -3432,7 +3432,9 @@ function BoardingPassModalBody({
             <Plane className="pointer-events-none absolute -right-6 top-6 h-44 w-44 rotate-[18deg] text-slate-50" />
 
             {/* Maskapai + nomor penerbangan */}
-            <div className="relative flex items-center justify-between gap-3">
+            {/* flex-wrap: di HP nomor penerbangan turun ke baris berikut
+                supaya nama maskapai tidak terpotong. */}
+            <div className="relative flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
                 {meta.logoSrc ? (
                   <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-white p-1 ring-1 ring-slate-200">
@@ -3453,7 +3455,7 @@ function BoardingPassModalBody({
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="truncate text-base font-bold tracking-tight" style={{ color: accentText }}>
+                  <p className="line-clamp-2 text-base font-bold leading-tight tracking-tight" style={{ color: accentText }}>
                     {meta.name}
                   </p>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400">
@@ -3471,6 +3473,34 @@ function BoardingPassModalBody({
               </div>
             </div>
 
+            {/* Layar sempit (HP): gate, kursi & jam berangkat tepat di bawah
+                header supaya langsung terlihat tanpa menggulir. Di layar lebar
+                info ini ada di potongan tiket (stub) sebelah kanan. */}
+            <div className="relative mt-4 grid grid-cols-3 gap-2 md:hidden">
+              {[
+                { label: "Gate", value: gate, color: accentText },
+                { label: "Kursi", value: parsed.seatNumber, color: "#0f172a" },
+                { label: "Jam", value: flight.departureTime, color: "#0f172a" },
+              ].map((c) => (
+                <div
+                  key={c.label}
+                  className="min-w-0 rounded-2xl px-2.5 py-2.5"
+                  style={{ backgroundColor: softBg }}
+                >
+                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    {c.label}
+                  </p>
+                  <p
+                    className="mt-1 truncate text-xl font-black leading-none tracking-tight"
+                    style={{ color: c.color }}
+                    title={c.value}
+                  >
+                    {c.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
             {/* Nama penumpang — fokus utama: petugas mencocokkan dengan KTP/SIM.
                 Tidak di-truncate supaya nama panjang terbaca utuh. */}
             <div className="relative mt-5 rounded-2xl bg-sky-50 px-5 py-4 ring-2 ring-sky-200">
@@ -3478,7 +3508,7 @@ function BoardingPassModalBody({
                 <IdCard className="h-4 w-4" />
                 Nama penumpang · cocokkan dengan identitas
               </p>
-              <p className="mt-1 break-words text-4xl font-black leading-tight tracking-tight text-slate-900">
+              <p className="mt-1 break-words text-3xl font-black leading-tight tracking-tight text-slate-900 md:text-4xl">
                 {name}
               </p>
               <p className="mt-1.5 text-[12px] font-medium leading-snug text-slate-600">
@@ -3540,15 +3570,16 @@ function BoardingPassModalBody({
             <div className="mx-auto h-full w-px border-l-2 border-dashed border-slate-300" />
           </div>
 
-          {/* ── Stub: info yang dicari penumpang ── */}
-          <div className="relative flex flex-col overflow-hidden p-5" style={{ backgroundColor: softBg }}>
+          {/* ── Stub: info yang dicari penumpang (layar lebar saja; di HP
+              gate & kursi tampil di bawah header kartu) ── */}
+          <div className="relative hidden flex-col overflow-hidden p-5 md:flex" style={{ backgroundColor: softBg }}>
             <Plane className="pointer-events-none absolute -right-5 bottom-3 h-28 w-28 rotate-[18deg] text-white/50" />
 
             <span className="relative inline-flex w-fit items-center gap-1.5 rounded-full bg-emerald-500 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-white shadow">
               <CheckCircle2 className="h-3 w-3" /> Terverifikasi
             </span>
 
-            <div className="relative mt-4 grid grid-cols-2 gap-3 md:grid-cols-1">
+            <div className="relative mt-4 grid grid-cols-1 gap-3">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
                   Gate
@@ -3563,7 +3594,7 @@ function BoardingPassModalBody({
                   {gate}
                 </p>
               </div>
-              <div className="md:border-t md:border-black/10 md:pt-3">
+              <div className="border-t border-black/10 pt-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-slate-500">
                   Kursi
                 </p>
@@ -3573,7 +3604,7 @@ function BoardingPassModalBody({
               </div>
             </div>
 
-            <div className="relative mt-4 rounded-2xl bg-white/75 px-3.5 py-2.5 ring-1 ring-white/80 backdrop-blur md:mt-auto">
+            <div className="relative mt-auto rounded-2xl bg-white/75 px-3.5 py-2.5 ring-1 ring-white/80 backdrop-blur">
               <p className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 <Clock className="h-3 w-3" /> Berangkat {flight.departureTime}
               </p>
