@@ -49,7 +49,7 @@ import {
   type KioskAgentAction,
 } from "@/lib/kioskAgent";
 import Image from "next/image";
-import { cn, todayDateString } from "@/lib/utils";
+import { cn, localDateKey, todayDateString } from "@/lib/utils";
 import { pullFidsKeberangkatan } from "@/lib/jadwal/flightSync";
 import {
   type FaceCaptureHandle,
@@ -522,8 +522,8 @@ export default function KioskPage() {
     }
     const all = getScanEvents();
     setRecent(all.slice(0, 6));
-    const today = new Date().toISOString().slice(0, 10);
-    setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+    const today = todayDateString();
+    setTodayScans(all.filter((e) => localDateKey(e.scannedAt) === today));
     const todays = getFlights().filter((f) => f.departureDate === today);
     setTodayFlights(todays);
     setFlightsToday(todays.length);
@@ -549,13 +549,13 @@ export default function KioskPage() {
       ) {
         return;
       }
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayDateString();
       // P-02: getFlights() dipanggil SEKALI (sebelumnya 2×) lalu hasilnya dipakai ulang.
       const todays = getFlights().filter((f) => f.departureDate === today);
       setTodayFlights(todays);
       setFlightsToday(todays.length);
       const all = getScanEvents();
-      setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+      setTodayScans(all.filter((e) => localDateKey(e.scannedAt) === today));
     };
     const id = window.setInterval(refresh, 5000);
     const onStorage = (e: StorageEvent) => {
@@ -947,8 +947,8 @@ export default function KioskPage() {
           });
           const all = getScanEvents();
           setRecent(all.slice(0, 6));
-          const today = new Date().toISOString().slice(0, 10);
-          setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+          const today = todayDateString();
+          setTodayScans(all.filter((e) => localDateKey(e.scannedAt) === today));
           setTodayFlights(getFlights().filter((f) => f.departureDate === today));
           setModalOpen(true);
           setTimeout(() => inputRef.current?.focus(), 0);
@@ -1088,8 +1088,8 @@ export default function KioskPage() {
       });
       const all = getScanEvents();
       setRecent(all.slice(0, 6));
-      const today = new Date().toISOString().slice(0, 10);
-      setTodayScans(all.filter((e) => e.scannedAt.slice(0, 10) === today));
+      const today = todayDateString();
+      setTodayScans(all.filter((e) => localDateKey(e.scannedAt) === today));
       setTodayFlights(getFlights().filter((f) => f.departureDate === today));
       if (willOpenKtp) {
         setKtpFlow({
@@ -1255,7 +1255,7 @@ export default function KioskPage() {
       // (bukan UNKNOWN_FLIGHT saat belum ada jadwal di-seed).
       ensureDemoBoardingFlight(pick);
       // Segarkan panel "FLIGHT AKTIF · BOARDING" tanpa tunggu polling 5 dtk.
-      const today = new Date().toISOString().slice(0, 10);
+      const today = todayDateString();
       const todays = getFlights().filter((f) => f.departureDate === today);
       setTodayFlights(todays);
       setFlightsToday(todays.length);
@@ -1326,8 +1326,8 @@ export default function KioskPage() {
         rejected: prev.rejected + 1,
       }));
       setRecent(getScanEvents().slice(0, 6));
-      const today = new Date().toISOString().slice(0, 10);
-      setTodayScans(getScanEvents().filter((e) => e.scannedAt.slice(0, 10) === today));
+      const today = todayDateString();
+      setTodayScans(getScanEvents().filter((e) => localDateKey(e.scannedAt) === today));
       playFeedbackSound("KTP_MISMATCH");
       playFeedbackHaptic("KTP_MISMATCH");
       toast.error(message, "Tidak sesuai");
@@ -1358,8 +1358,8 @@ export default function KioskPage() {
       /* sync backend tidak boleh mengganggu alur scan */
     }
     setRecent(getScanEvents().slice(0, 6));
-    const today = decidedAt.slice(0, 10);
-    setTodayScans(getScanEvents().filter((e) => e.scannedAt.slice(0, 10) === today));
+    const today = localDateKey(decidedAt);
+    setTodayScans(getScanEvents().filter((e) => localDateKey(e.scannedAt) === today));
   }, [last]);
 
   const lastMeta = last ? STATUS_META[last.event.resultStatus] : null;
@@ -2303,8 +2303,8 @@ function ShiftStats({ scans, now }: { scans: ScanEvent[]; now: Date }) {
       else rejected++;
       const d = new Date(e.scannedAt);
       if (nowMs - d.getTime() <= 3_600_000) lastHour++;
-      // Grafik per jam hanya untuk hari lokal yang sama (todayScans difilter
-      // berdasarkan tanggal UTC).
+      // Grafik per jam hanya untuk hari lokal yang sama (jaga-jaga bila daftar
+      // scan berisi entri hari lain).
       if (d.toDateString() === localDay) hourly[d.getHours()]++;
     }
     const curHour = now.getHours();

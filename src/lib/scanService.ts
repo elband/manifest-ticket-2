@@ -13,7 +13,7 @@ import {
   updateScanEvent,
   upsertManifestPax,
 } from "./storage";
-import { todayDateString, uid } from "./utils";
+import { localDateKey, todayDateString, uid } from "./utils";
 import { getSettings } from "./settings";
 import { getEffectiveFlightStatus } from "./flightStatus";
 import { activeTestFlight } from "./dummyFlight";
@@ -170,7 +170,7 @@ export function validateBarcode(raw: string): ValidationOutcome {
       e.rawBarcode === cleaned &&
       e.resultStatus === "VALID_FLIGHT" &&
       e.flightId === flight.id &&
-      e.scannedAt.slice(0, 10) === today,
+      localDateKey(e.scannedAt) === today,
   );
   if (dup) {
     const scannedAt = new Date(dup.scannedAt).toLocaleTimeString("id-ID", {

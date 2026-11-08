@@ -2,6 +2,7 @@
 
 import type { Flight, ParsedBarcode, ScanEvent } from "./types";
 import { getSettings } from "./settings";
+import { todayDateString } from "./utils";
 
 export interface SikerenPayload {
   /** Source/station id supaya backend bisa membedakan gate */
@@ -137,7 +138,7 @@ export async function pingSikeren(
     flightNumber: "TEST",
     originAirport: "XXX",
     destinationAirport: "XXX",
-    departureDate: new Date().toISOString().slice(0, 10),
+    departureDate: todayDateString(),
     departureTime: "00:00",
     gate: "TEST",
     pnr: "TEST00",

@@ -9,6 +9,7 @@ import {
 } from "./mockData";
 import { buildFlightsFromCustomSeed } from "./seedSnapshot";
 import { manifestDedupKey } from "./manifest";
+import { todayDateString } from "./utils";
 
 const KEYS = {
   users: "afvs.users",
@@ -309,7 +310,7 @@ export function archiveOldScanEvents(keepDays = 1): {
   ranToday: boolean;
 } {
   if (!isBrowser()) return { moved: 0, ranToday: false };
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = todayDateString();
   const lastRun = window.localStorage.getItem(KEYS.archiveAt);
   if (lastRun === todayStr) return { moved: 0, ranToday: true };
 

@@ -21,6 +21,7 @@ import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { JwtPayload } from "../auth/auth.service";
 import { IdentityDecisionDto, ListScansQuery, PushScanDto } from "./dto";
 import { ScanEventsService } from "./scan-events.service";
+import { witaDateKey } from "../common/wita";
 
 @ApiTags("scan-events")
 @ApiBearerAuth()
@@ -39,7 +40,7 @@ export class ScanEventsController {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
           const root = process.env.UPLOAD_DIR ?? "./uploads";
-          const today = new Date().toISOString().slice(0, 10);
+          const today = witaDateKey();
           const dir = join(root, today);
           if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
           cb(null, dir);

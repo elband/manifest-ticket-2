@@ -15,7 +15,7 @@ import { PremiumStatCard } from "@/components/dashboard/PremiumStatCard";
 import { ScanStatusBadge } from "@/components/ui/StatusBadge";
 import { Flight, ScanEvent } from "@/lib/types";
 import { getFlights, getScanEvents, getSession } from "@/lib/storage";
-import { cn, formatTime, todayDateString } from "@/lib/utils";
+import { cn, formatTime, localDateKey, todayDateString } from "@/lib/utils";
 import { useCountUp } from "@/lib/useCountUp";
 import {
   boardingProgressFromCount,
@@ -85,7 +85,7 @@ export default function DashboardPage() {
   const boardableNow = effectiveStats.open + effectiveStats.active;
 
   const eventsToday = useMemo(
-    () => events.filter((e) => e.scannedAt.slice(0, 10) === today),
+    () => events.filter((e) => localDateKey(e.scannedAt) === today),
     [events, today],
   );
 

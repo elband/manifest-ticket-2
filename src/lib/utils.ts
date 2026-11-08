@@ -13,6 +13,21 @@ export function todayDateString(): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Tanggal LOKAL (YYYY-MM-DD) dari timestamp ISO/Date. Pakai ini — bukan
+ * `iso.slice(0, 10)` — saat membandingkan dengan `todayDateString()`:
+ * timestamp disimpan dalam UTC, jadi slice memberi tanggal UTC yang di WITA
+ * (UTC+8) baru berganti pukul 08.00 pagi.
+ */
+export function localDateKey(value: string | Date): string {
+  const t = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(t.getTime())) return "";
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, "0");
+  const d = String(t.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function tomorrowDateString(): string {
   return dateStringFromOffset(1);
 }

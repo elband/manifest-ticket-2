@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
 import { manifestDedupKey } from "../common/manifest";
+import { witaDateKey, witaDayRange } from "../common/wita";
 import {
   CreateFlightDto,
   ListFlightsQuery,
@@ -270,10 +271,7 @@ export class FlightsService {
       resultStatus: "VALID_FLIGHT",
     };
     if (date) {
-      where.scannedAt = {
-        gte: new Date(`${date}T00:00:00Z`),
-        lte: new Date(`${date}T23:59:59.999Z`),
-      };
+      where.scannedAt = witaDayRange(date);
     }
     const rawEvents = await this.prisma.scanEvent.findMany({
       where,
@@ -303,7 +301,7 @@ export class FlightsService {
     const events = rawEvents.map((e) => {
       if (e.flightId) return e;
       if (!e.flightNumber) return e;
-      const key = `${e.flightNumber.toUpperCase()}__${e.scannedAt.toISOString().slice(0, 10)}`;
+      const key = `${e.flightNumber.toUpperCase()}__${witaDateKey(e.scannedAt)}`;
       return { ...e, flightId: flightIndex.get(key) ?? null };
     });
 

@@ -2,7 +2,7 @@ import { boardingProgressFromCount, buildBoardedCounts } from "./boarding";
 import { getEffectiveFlightStatus } from "./flightStatus";
 import type { AppSettings } from "./settings";
 import type { Flight, FlightAuditEvent, ScanEvent, ScanResultStatus } from "./types";
-import { todayDateString } from "./utils";
+import { localDateKey, todayDateString } from "./utils";
 
 export type InsightCategory =
   | "overview"
@@ -69,7 +69,7 @@ export function buildAppInsightReport(input: {
   const now = input.now ?? new Date();
   const today = todayDateString();
   const flightsToday = input.flights.filter((f) => f.departureDate === today);
-  const eventsToday = input.events.filter((e) => e.scannedAt.slice(0, 10) === today);
+  const eventsToday = input.events.filter((e) => localDateKey(e.scannedAt) === today);
   const validToday = eventsToday.filter((e) => e.resultStatus === "VALID_FLIGHT");
   const duplicateToday = eventsToday.filter(
     (e) => e.resultStatus === "DUPLICATE_SCAN",
@@ -502,7 +502,7 @@ function addSystemInsights(
   const todaysFlightIds = new Set(input.flightsToday.map((flight) => flight.id));
   const todaysAuditCount = input.auditEvents.filter(
     (event) =>
-      todaysFlightIds.has(event.flightId) && event.at.slice(0, 10) === todayDateString(),
+      todaysFlightIds.has(event.flightId) && localDateKey(event.at) === todayDateString(),
   ).length;
   if (todaysAuditCount >= 5) {
     insights.push({

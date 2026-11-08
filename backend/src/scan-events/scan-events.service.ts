@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { JwtPayload } from "../auth/auth.service";
 import { IdentityDecisionDto, ListScansQuery, PushScanDto } from "./dto";
 import { manifestDedupKey } from "../common/manifest";
+import { naiveDayRange, witaDateKey, witaDayRange } from "../common/wita";
 
 // F-05: supervisor/admin boleh lintas-station; operator hanya station-nya.
 function isPrivileged(role: string): boolean {
@@ -65,12 +66,8 @@ export class ScanEventsService {
     // tunggal, flightNumber+tanggal sudah unik.
     let flightId: string | null = null;
     if (dto.flightNumber) {
-      const date = new Date(dto.scannedAt);
-      const dayStart = new Date(date);
-      dayStart.setUTCHours(0, 0, 0, 0);
-      const dayEnd = new Date(date);
-      dayEnd.setUTCHours(23, 59, 59, 999);
-      const std = { gte: dayStart, lte: dayEnd };
+      // Hari kalender WITA dari scan, dicocokkan ke std (jam lokal naif).
+      const std = naiveDayRange(witaDateKey(dto.scannedAt));
       const byStation = await this.prisma.flight.findFirst({
         where: { station: dto.station, flightNumber: dto.flightNumber, std },
         select: { id: true },
@@ -305,9 +302,7 @@ export class ScanEventsService {
     if (q.flightNumber) where.flightNumber = q.flightNumber;
     if (q.resultStatus) where.resultStatus = q.resultStatus;
     if (q.date) {
-      const start = new Date(`${q.date}T00:00:00Z`);
-      const end = new Date(`${q.date}T23:59:59.999Z`);
-      where.scannedAt = { gte: start, lte: end };
+      where.scannedAt = witaDayRange(q.date);
     }
     const page = Math.max(1, q.page ?? 1);
     const perPage = Math.min(200, Math.max(1, q.perPage ?? 50));
