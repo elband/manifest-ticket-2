@@ -224,8 +224,64 @@ const config: Config = {
           "0%": { transform: "translateX(100%)" },
           "100%": { transform: "translateX(0)" },
         },
+        // Kartu boarding pass / PAS dari riwayat: "ditarik" keluar dari laci
+        // (kanan) sambil berputar 3D, sedikit melewati lalu mendarat.
+        "ticket-in": {
+          "0%": {
+            opacity: "0",
+            transform:
+              "perspective(1400px) translate3d(140px, 24px, 0) rotateY(-38deg) rotateZ(7deg) scale(0.82)",
+          },
+          "55%": {
+            opacity: "1",
+            transform:
+              "perspective(1400px) translate3d(-10px, -4px, 0) rotateY(7deg) rotateZ(-1.5deg) scale(1.025)",
+          },
+          "80%": {
+            transform:
+              "perspective(1400px) translate3d(3px, 0, 0) rotateY(-2deg) rotateZ(0.4deg) scale(0.995)",
+          },
+          "100%": {
+            opacity: "1",
+            transform: "perspective(1400px) translate3d(0, 0, 0) rotateY(0) rotateZ(0) scale(1)",
+          },
+        },
+        "ticket-out": {
+          "0%": { opacity: "1", transform: "perspective(1400px) translate3d(0,0,0) scale(1)" },
+          "100%": {
+            opacity: "0",
+            transform: "perspective(1400px) translate3d(90px, 10px, 0) rotateY(-24deg) scale(0.9)",
+          },
+        },
+        // Kilau cahaya menyapu permukaan kartu setelah mendarat.
+        "ticket-shine": {
+          "0%": { transform: "translateX(-130%) skewX(-18deg)", opacity: "0" },
+          "15%": { opacity: "1" },
+          "100%": { transform: "translateX(260%) skewX(-18deg)", opacity: "0" },
+        },
+        // Cap status jatuh seperti stempel karet.
+        "stamp-in": {
+          "0%": { opacity: "0", transform: "scale(2.4) rotate(-28deg)" },
+          "60%": { opacity: "1", transform: "scale(0.9) rotate(-11deg)" },
+          "80%": { transform: "scale(1.05) rotate(-13deg)" },
+          "100%": { opacity: "1", transform: "scale(1) rotate(-12deg)" },
+        },
+        "fade-out": {
+          "0%": { opacity: "1" },
+          "100%": { opacity: "0" },
+        },
+        "ticket-glow": {
+          "0%, 100%": { opacity: "0.45", transform: "scale(0.96)" },
+          "50%": { opacity: "0.8", transform: "scale(1.04)" },
+        },
       },
       animation: {
+        "ticket-in": "ticket-in 0.85s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "ticket-out": "ticket-out 0.24s cubic-bezier(0.4, 0, 1, 1) both",
+        "ticket-shine": "ticket-shine 1.2s cubic-bezier(0.25, 0.8, 0.3, 1) 0.55s both",
+        "stamp-in": "stamp-in 0.55s cubic-bezier(0.34, 1.4, 0.64, 1) 0.6s both",
+        "fade-out": "fade-out 0.24s ease-in both",
+        "ticket-glow": "ticket-glow 3.6s ease-in-out 0.9s infinite",
         "fade-up": "fade-up 0.5s ease-out both",
         "fade-in": "fade-in 0.4s ease-out both",
         "badge-pop": "badge-pop 0.35s ease-out both",

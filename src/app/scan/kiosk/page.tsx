@@ -39,9 +39,12 @@ import {
   Minimize,
   History,
   Search,
+  ChevronLeft,
   Camera,
 } from "lucide-react";
 import { CameraScanner } from "@/components/scan/CameraScanner";
+import { TouchKeyboard } from "@/components/scan/TouchKeyboard";
+import { BoardingPassTicket, PasTicket, TicketStage } from "@/components/scan/HistoryTicket";
 import { useCountUp } from "@/lib/useCountUp";
 import {
   getKioskAgentActions,
@@ -104,8 +107,11 @@ import {
   type ApiOutboxSummary,
 } from "@/lib/api/outbox";
 import {
+  apiListPasScans,
   apiVerifyPas,
   getDeviceState,
+  type ApiPasScan,
+  type PasStatus,
   isAuthed,
   subscribeDevice,
   type DeviceState,
@@ -442,6 +448,25 @@ export default function KioskPage() {
   // Riwayat scan (laci kanan). Kolom cari di dalamnya butuh keyboard, jadi
   // selama laci terbuka input scanner tersembunyi dijeda.
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  // Cek kartu PAS hari ini (tersimpan di server, bukan lokal) — diambil tiap
+  // laci riwayat dibuka. Offline / gagal → riwayat hanya berisi boarding pass.
+  const [historyPas, setHistoryPas] = React.useState<ApiPasScan[]>([]);
+  React.useEffect(() => {
+    if (!historyOpen || !isAuthed()) return;
+    let alive = true;
+    const witaToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Makassar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    apiListPasScans({ date: witaToday, station: resolveStation(), perPage: 200 }).then((res) => {
+      if (alive && res.ok && res.data) setHistoryPas(res.data.items);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [historyOpen]);
   const scanPaused = historyOpen;
   const scanPausedRef = React.useRef(false);
   React.useEffect(() => {
@@ -1703,6 +1728,7 @@ export default function KioskPage() {
         open={historyOpen}
         onClose={() => setHistoryOpen(false)}
         scans={todayScans}
+        pasScans={historyPas}
         flights={todayFlights}
         currentOfficer={session}
       />
@@ -2523,37 +2549,106 @@ const HISTORY_STATUS_LABEL: Record<ScanResultStatus, string> = {
   KTP_MISMATCH: "KTP tidak cocok",
 };
 
-const HISTORY_FILTERS: { key: HistoryFilter; label: string; dot: string }[] = [
-  { key: "all", label: "Semua", dot: "bg-kiosk-sign-glow" },
-  { key: "valid", label: "Valid", dot: HISTORY_GROUP_META.valid.dot },
-  { key: "duplicate", label: "Duplikat", dot: HISTORY_GROUP_META.duplicate.dot },
-  { key: "rejected", label: "Ditolak", dot: HISTORY_GROUP_META.rejected.dot },
+/** Tab laci riwayat: scan boarding pass (lokal) atau cek kartu PAS (server). */
+type HistoryTab = "bp" | "pas";
+
+const HISTORY_FILTERS: Record<HistoryTab, { key: HistoryFilter; label: string; dot: string }[]> = {
+  bp: [
+    { key: "all", label: "Semua", dot: "bg-kiosk-sign-glow" },
+    { key: "valid", label: "Valid", dot: HISTORY_GROUP_META.valid.dot },
+    { key: "duplicate", label: "Duplikat", dot: HISTORY_GROUP_META.duplicate.dot },
+    { key: "rejected", label: "Ditolak", dot: HISTORY_GROUP_META.rejected.dot },
+  ],
+  // Cek PAS tak punya "duplikat": berlaku atau ditolak (kedaluwarsa/tak terdaftar/gagal).
+  pas: [
+    { key: "all", label: "Semua", dot: "bg-kiosk-sign-glow" },
+    { key: "valid", label: "Berlaku", dot: HISTORY_GROUP_META.valid.dot },
+    { key: "rejected", label: "Ditolak", dot: HISTORY_GROUP_META.rejected.dot },
+  ],
+};
+
+const HISTORY_TABS: { key: HistoryTab; label: string; unit: string; search: string }[] = [
+  { key: "bp", label: "Boarding pass", unit: "scan", search: "Cari nama, flight, PNR, atau kursi" },
+  { key: "pas", label: "Pas Bandara", unit: "cek PAS", search: "Cari nama, nomor PAS, atau instansi" },
 ];
+
+function pasGroupOf(status: PasStatus): HistoryGroup {
+  return status === "VALID" ? "valid" : "rejected";
+}
+
+const PAS_STATUS_LABEL: Record<PasStatus, string> = {
+  VALID: "PAS valid",
+  EXPIRED: "PAS kedaluwarsa",
+  NOT_FOUND: "PAS tak terdaftar",
+  ERROR: "Cek manual",
+};
+
+/** Satu baris riwayat: scan boarding pass (lokal) atau cek kartu PAS (server). */
+type HistoryItem =
+  | { kind: "bp"; key: string; at: string; group: HistoryGroup; e: ScanEvent }
+  | { kind: "pas"; key: string; at: string; group: HistoryGroup; p: ApiPasScan };
+
+const TICKET_OUT_MS = 240;
 
 function ScanHistoryDrawer({
   open,
   onClose,
   scans,
+  pasScans,
   flights,
   currentOfficer,
 }: {
   open: boolean;
   onClose: () => void;
   scans: ScanEvent[];
+  /** Cek kartu PAS hari ini dari server (kosong bila offline). */
+  pasScans: ApiPasScan[];
   flights: Flight[];
   /** Petugas yang login (bisa akun server yang tak ada di daftar lokal). */
   currentOfficer: SessionUser | null;
 }) {
+  // Kartu boarding pass / PAS yang sedang ditampilkan di samping laci.
+  const [selectedKey, setSelectedKey] = React.useState<string | null>(null);
+  const [ticketLeaving, setTicketLeaving] = React.useState(false);
+  const leaveTimer = React.useRef<number | undefined>(undefined);
+  const selectItem = (key: string) => {
+    window.clearTimeout(leaveTimer.current);
+    setTicketLeaving(false);
+    setSelectedKey((cur) => (cur === key ? null : key));
+  };
+  const closeTicket = () => {
+    if (!selectedKey || ticketLeaving) return;
+    setTicketLeaving(true);
+    leaveTimer.current = window.setTimeout(() => {
+      setSelectedKey(null);
+      setTicketLeaving(false);
+    }, TICKET_OUT_MS);
+  };
+  React.useEffect(() => () => window.clearTimeout(leaveTimer.current), []);
+
+  const [tab, setTab] = React.useState<HistoryTab>("bp");
   const [filter, setFilter] = React.useState<HistoryFilter>("all");
   const [query, setQuery] = React.useState("");
   const [limit, setLimit] = React.useState(HISTORY_PAGE);
   const closeRef = React.useRef<HTMLButtonElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  // Monitor kiosk layar sentuh tanpa keyboard fisik → keyboard di layar.
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false);
+  const changeQuery = (q: string) => {
+    setQuery(q);
+    setLimit(HISTORY_PAGE);
+  };
 
   React.useEffect(() => {
     if (!open) return;
+    setTab("bp");
     setFilter("all");
     setQuery("");
     setLimit(HISTORY_PAGE);
+    setKeyboardOpen(false);
+    window.clearTimeout(leaveTimer.current);
+    setSelectedKey(null);
+    setTicketLeaving(false);
     setTimeout(() => closeRef.current?.focus(), 0);
   }, [open]);
 
@@ -2587,39 +2682,79 @@ function ScanHistoryDrawer({
     return m;
   }, [open, currentOfficer]);
 
-  const sorted = React.useMemo(
-    () => [...scans].sort((a, b) => b.scannedAt.localeCompare(a.scannedAt)),
-    [scans],
-  );
+  const sorted = React.useMemo(() => {
+    const items: HistoryItem[] = [
+      ...scans.map(
+        (e): HistoryItem => ({
+          kind: "bp",
+          key: `bp:${e.id}`,
+          at: e.scannedAt,
+          group: historyGroupOf(e.resultStatus),
+          e,
+        }),
+      ),
+      ...pasScans.map(
+        (p): HistoryItem => ({
+          kind: "pas",
+          key: `pas:${p.id}`,
+          at: p.createdAt,
+          group: pasGroupOf(p.status),
+          p,
+        }),
+      ),
+    ];
+    // Urut berdasar waktu sebenarnya (format ISO lokal & server bisa beda).
+    return items.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  }, [scans, pasScans]);
+  const tabCounts: Record<HistoryTab, number> = { bp: scans.length, pas: pasScans.length };
+  const inTab = React.useMemo(() => sorted.filter((it) => it.kind === tab), [sorted, tab]);
   const counts = React.useMemo(() => {
-    const c: Record<HistoryFilter, number> = { all: sorted.length, valid: 0, duplicate: 0, rejected: 0 };
-    for (const e of sorted) c[historyGroupOf(e.resultStatus)]++;
+    const c: Record<HistoryFilter, number> = { all: inTab.length, valid: 0, duplicate: 0, rejected: 0 };
+    for (const it of inTab) c[it.group]++;
     return c;
-  }, [sorted]);
+  }, [inTab]);
+  const tabMeta = HISTORY_TABS.find((t) => t.key === tab)!;
+  const switchTab = (t: HistoryTab) => {
+    if (t === tab) return;
+    setTab(t);
+    setFilter("all");
+    setLimit(HISTORY_PAGE);
+    window.clearTimeout(leaveTimer.current);
+    setSelectedKey(null);
+    setTicketLeaving(false);
+  };
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sorted.filter((e) => {
-      if (filter !== "all" && historyGroupOf(e.resultStatus) !== filter) return false;
+    return inTab.filter((it) => {
+      if (filter !== "all" && it.group !== filter) return false;
       if (!q) return true;
-      return [
-        e.parsedPassengerName,
-        e.parsedFlightNumber,
-        e.parsedPnr,
-        e.parsedSeatNumber,
-        e.parsedTicketNumber,
-      ].some((v) => v?.toLowerCase().includes(q));
+      const fields =
+        it.kind === "bp"
+          ? [
+              it.e.parsedPassengerName,
+              it.e.parsedFlightNumber,
+              it.e.parsedPnr,
+              it.e.parsedSeatNumber,
+              it.e.parsedTicketNumber,
+            ]
+          : [it.p.name, it.p.pasNumber, it.p.company, it.p.position];
+      return fields.some((v) => v?.toLowerCase().includes(q));
     });
-  }, [sorted, filter, query]);
+  }, [inTab, filter, query]);
 
   // Kelompokkan per jam (daftar sudah urut terbaru → terlama).
   const shown = filtered.slice(0, limit);
-  const groups: { hour: number; items: ScanEvent[] }[] = [];
-  for (const e of shown) {
-    const h = new Date(e.scannedAt).getHours();
+  const groups: { hour: number; items: HistoryItem[] }[] = [];
+  for (const it of shown) {
+    const h = new Date(it.at).getHours();
     const g = groups[groups.length - 1];
-    if (g && g.hour === h) g.items.push(e);
-    else groups.push({ hour: h, items: [e] });
+    if (g && g.hour === h) g.items.push(it);
+    else groups.push({ hour: h, items: [it] });
   }
+
+  const officerOf = (by: string) =>
+    officerName.get(by.toLowerCase()) ?? officerName.get(by) ?? by.split("@")[0];
+  const selected = selectedKey ? sorted.find((it) => it.key === selectedKey) ?? null : null;
 
   if (!open) return null;
 
@@ -2650,7 +2785,7 @@ function ScanHistoryDrawer({
               Riwayat scan hari ini
             </h2>
             <p className="mt-1 text-[14px] text-white/75">
-              {counts.all} scan, terbaru di atas
+              {counts.all} {tabMeta.unit}, terbaru di atas
             </p>
           </div>
           <button
@@ -2664,16 +2799,62 @@ function ScanHistoryDrawer({
           </button>
         </header>
 
-        <div className="shrink-0 space-y-3 border-b border-kiosk-line px-5 py-4">
-          <div className="grid grid-cols-4 gap-2" role="tablist" aria-label="Saring status">
-            {HISTORY_FILTERS.map((f) => {
+        <div
+          role="tablist"
+          aria-label="Jenis riwayat"
+          className="grid shrink-0 grid-cols-2 border-b border-kiosk-line px-5"
+        >
+          {HISTORY_TABS.map((t) => {
+            const active = tab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                role="tab"
+                id={`history-tab-${t.key}`}
+                aria-selected={active}
+                aria-controls="history-panel"
+                onClick={() => switchTab(t.key)}
+                className={cn(
+                  "-mb-px flex h-14 items-center justify-center gap-2 border-b-[3px] text-[16px] font-semibold transition",
+                  active
+                    ? "border-kiosk-sign-glow text-white"
+                    : "border-transparent text-white/55 hover:text-white/85",
+                )}
+              >
+                {t.key === "bp" ? <Ticket className="h-5 w-5" /> : <IdCard className="h-5 w-5" />}
+                {t.label}
+                <span
+                  className={cn(
+                    "min-w-[28px] rounded-full px-2 py-0.5 text-center font-board text-[14px] tabular-nums",
+                    active ? "bg-kiosk-sign-glow/20 text-kiosk-sign-glow" : "bg-white/10 text-white/60",
+                  )}
+                >
+                  {tabCounts[t.key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div
+          id="history-panel"
+          role="tabpanel"
+          aria-labelledby={`history-tab-${tab}`}
+          className="shrink-0 space-y-3 border-b border-kiosk-line px-5 py-4"
+        >
+          <div
+            className={cn("grid gap-2", HISTORY_FILTERS[tab].length === 4 ? "grid-cols-4" : "grid-cols-3")}
+            role="group"
+            aria-label="Saring status"
+          >
+            {HISTORY_FILTERS[tab].map((f) => {
               const active = filter === f.key;
               return (
                 <button
                   key={f.key}
                   type="button"
-                  role="tab"
-                  aria-selected={active}
+                  aria-pressed={active}
                   onClick={() => {
                     setFilter(f.key);
                     setLimit(HISTORY_PAGE);
@@ -2700,31 +2881,56 @@ function ScanHistoryDrawer({
             <span className="sr-only">Cari riwayat scan</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" />
             <input
+              ref={searchRef}
               type="search"
               value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setLimit(HISTORY_PAGE);
-              }}
-              placeholder="Cari nama, flight, PNR, atau kursi"
+              onChange={(e) => changeQuery(e.target.value)}
+              onFocus={() => setKeyboardOpen(true)}
+              onPointerDown={() => setKeyboardOpen(true)}
+              // Keyboard OS tidak dimunculkan; pakai keyboard di layar.
+              // Keyboard fisik (bila ada) tetap bisa mengetik.
+              inputMode="none"
+              enterKeyHint="search"
+              placeholder={tabMeta.search}
               autoComplete="off"
               spellCheck={false}
-              className="h-11 w-full rounded-md bg-kiosk-cell pl-9 pr-3 text-[15px] text-white ring-1 ring-kiosk-line placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-kiosk-sign-glow"
+              className="h-12 w-full rounded-md bg-kiosk-cell pl-9 pr-12 text-[16px] text-white ring-1 ring-kiosk-line placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-kiosk-sign-glow [&::-webkit-search-cancel-button]:hidden"
             />
+            {query && (
+              <button
+                type="button"
+                aria-label="Kosongkan pencarian"
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={() => changeQuery("")}
+                className="absolute right-1 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md text-white/60 transition hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </label>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
           {filtered.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
-              <History className="h-10 w-10 text-white/25" />
+              {tab === "bp" ? (
+                <History className="h-10 w-10 text-white/25" />
+              ) : (
+                <IdCard className="h-10 w-10 text-white/25" />
+              )}
               <p className="text-[16px] font-semibold text-white/80">
-                {counts.all === 0 ? "Belum ada scan hari ini" : "Tidak ada scan yang cocok"}
+                {counts.all > 0
+                  ? `Tidak ada ${tabMeta.unit} yang cocok`
+                  : tab === "bp"
+                    ? "Belum ada scan boarding pass hari ini"
+                    : "Belum ada cek Pas Bandara hari ini"}
               </p>
-              <p className="text-[14px] text-white/50">
-                {counts.all === 0
-                  ? "Scan boarding pass pertama akan muncul di sini."
-                  : "Ubah kata kunci atau pilih status lain."}
+              <p className="max-w-[340px] text-[14px] text-white/50">
+                {counts.all > 0
+                  ? "Ubah kata kunci atau pilih status lain."
+                  : tab === "bp"
+                    ? "Scan boarding pass pertama akan muncul di sini."
+                    : "Riwayat ini diambil dari server, jadi kosong bila kiosk sedang offline."}
               </p>
             </div>
           ) : (
@@ -2737,22 +2943,30 @@ function ScanHistoryDrawer({
                       {hh}.00–{hh}.59
                     </span>
                     <span className="text-[12px] tabular-nums text-white/50">
-                      {g.items.length} scan
+                      {g.items.length} {tabMeta.unit}
                     </span>
                   </h3>
                   <ol className="space-y-1.5">
-                    {g.items.map((e) => (
-                      <HistoryRow
-                        key={e.id}
-                        e={e}
-                        flight={e.flightId ? flightById.get(e.flightId) ?? null : null}
-                        officer={
-                          officerName.get(e.scannedBy.toLowerCase()) ??
-                          officerName.get(e.scannedBy) ??
-                          e.scannedBy.split("@")[0]
-                        }
-                      />
-                    ))}
+                    {g.items.map((it) =>
+                      it.kind === "bp" ? (
+                        <HistoryRow
+                          key={it.key}
+                          e={it.e}
+                          flight={it.e.flightId ? flightById.get(it.e.flightId) ?? null : null}
+                          officer={officerOf(it.e.scannedBy)}
+                          selected={selectedKey === it.key}
+                          onSelect={() => selectItem(it.key)}
+                        />
+                      ) : (
+                        <PasHistoryRow
+                          key={it.key}
+                          p={it.p}
+                          officer={it.p.operator?.name ?? officerOf(it.p.operatorId)}
+                          selected={selectedKey === it.key}
+                          onSelect={() => selectItem(it.key)}
+                        />
+                      ),
+                    )}
                   </ol>
                 </section>
               );
@@ -2765,12 +2979,137 @@ function ScanHistoryDrawer({
               onClick={() => setLimit((l) => l + HISTORY_PAGE)}
               className="mt-4 w-full rounded-md py-3 text-[14px] font-semibold text-white/80 ring-1 ring-kiosk-line transition hover:bg-kiosk-cell"
             >
-              Tampilkan {Math.min(HISTORY_PAGE, filtered.length - limit)} scan lagi
+              Tampilkan {Math.min(HISTORY_PAGE, filtered.length - limit)} {tabMeta.unit} lagi
             </button>
           )}
         </div>
+
+        {keyboardOpen && (
+          <TouchKeyboard
+            value={query}
+            onChange={changeQuery}
+            onClose={() => {
+              setKeyboardOpen(false);
+              searchRef.current?.blur();
+            }}
+          />
+        )}
       </aside>
+
+      {selected && (
+        <TicketStage
+          // Ganti kartu → animasi masuk diputar ulang.
+          key={selected.key}
+          leaving={ticketLeaving}
+          onDismiss={closeTicket}
+          onActivity={touch}
+        >
+          {selected.kind === "bp" ? (
+            <BoardingPassTicket
+              key={selected.key}
+              e={selected.e}
+              flight={selected.e.flightId ? flightById.get(selected.e.flightId) ?? null : null}
+              officer={officerOf(selected.e.scannedBy)}
+            />
+          ) : (
+            <PasTicket
+              key={selected.key}
+              scan={selected.p}
+              officer={selected.p.operator?.name ?? officerOf(selected.p.operatorId)}
+            />
+          )}
+        </TicketStage>
+      )}
     </div>
+  );
+}
+
+/** Bingkai baris riwayat yang bisa disentuh untuk menampilkan kartunya. */
+function HistoryRowShell({
+  at,
+  group,
+  selected,
+  onSelect,
+  label,
+  children,
+}: {
+  at: string;
+  group: HistoryGroup;
+  selected: boolean;
+  onSelect: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const meta = HISTORY_GROUP_META[group];
+  const t = new Date(at);
+  const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+  const ss = String(t.getSeconds()).padStart(2, "0");
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        aria-pressed={selected}
+        aria-label={label}
+        className={cn(
+          "relative flex w-full gap-3 overflow-hidden rounded-[4px] py-2.5 pl-4 pr-3 text-left ring-1 transition duration-200 active:scale-[0.985]",
+          selected
+            ? "-translate-x-1.5 bg-kiosk-sign/25 ring-2 ring-kiosk-sign-glow shadow-[0_0_0_4px_rgba(56,189,248,0.12)]"
+            : "bg-kiosk-cell ring-kiosk-line hover:bg-kiosk-cell/70",
+        )}
+      >
+        <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", meta.dot)} />
+        <div className="w-[58px] shrink-0 pt-0.5 leading-none">
+          <span className="block font-board text-[20px] font-semibold tabular-nums">{hhmm}</span>
+          <span className="mt-1 block text-[12px] tabular-nums text-white/45">:{ss}</span>
+        </div>
+        <div className="min-w-0 flex-1">{children}</div>
+        <ChevronLeft
+          aria-hidden
+          className={cn(
+            "h-5 w-5 shrink-0 self-center transition",
+            selected ? "text-kiosk-sign-glow" : "text-white/25",
+          )}
+        />
+      </button>
+    </li>
+  );
+}
+
+function PasHistoryRow({
+  p,
+  officer,
+  selected,
+  onSelect,
+}: {
+  p: ApiPasScan;
+  officer: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const group = pasGroupOf(p.status);
+  const meta = HISTORY_GROUP_META[group];
+  const details = [p.pasNumber && `No. ${p.pasNumber}`, p.company, `oleh ${officer}`].filter(Boolean);
+  return (
+    <HistoryRowShell
+      at={p.createdAt}
+      group={group}
+      selected={selected}
+      onSelect={onSelect}
+      label={`Lihat kartu PAS ${p.name ?? ""}`}
+    >
+      <div className="flex items-center gap-2">
+        <span className="inline-flex h-6 items-center gap-1 rounded bg-white/10 px-1.5 text-[12px] font-bold tracking-wide text-white/85">
+          <IdCard className="h-3.5 w-3.5" />
+          PAS
+        </span>
+        <span className={cn("ml-auto shrink-0 text-[13px] font-semibold", meta.text)}>
+          {PAS_STATUS_LABEL[p.status] ?? p.status}
+        </span>
+      </div>
+      <p className="mt-1 truncate text-[15px] font-semibold">{p.name ?? "Kartu tidak terdaftar"}</p>
+      <p className="mt-0.5 truncate text-[12.5px] text-white/55">{details.join(", ")}</p>
+    </HistoryRowShell>
   );
 }
 
@@ -2778,16 +3117,17 @@ function HistoryRow({
   e,
   flight,
   officer,
+  selected,
+  onSelect,
 }: {
   e: ScanEvent;
   flight: Flight | null;
   officer: string;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   const group = historyGroupOf(e.resultStatus);
   const meta = HISTORY_GROUP_META[group];
-  const t = new Date(e.scannedAt);
-  const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
-  const ss = String(t.getSeconds()).padStart(2, "0");
   const details = [
     e.parsedSeatNumber && `Kursi ${e.parsedSeatNumber}`,
     e.parsedPnr && `PNR ${e.parsedPnr}`,
@@ -2795,13 +3135,13 @@ function HistoryRow({
   ].filter(Boolean);
 
   return (
-    <li className="relative flex gap-3 overflow-hidden rounded-[4px] bg-kiosk-cell py-2.5 pl-4 pr-3 ring-1 ring-kiosk-line">
-      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1", meta.dot)} />
-      <div className="w-[58px] shrink-0 pt-0.5 leading-none">
-        <span className="block font-board text-[20px] font-semibold tabular-nums">{hhmm}</span>
-        <span className="mt-1 block text-[12px] tabular-nums text-white/45">:{ss}</span>
-      </div>
-      <div className="min-w-0 flex-1">
+    <HistoryRowShell
+      at={e.scannedAt}
+      group={group}
+      selected={selected}
+      onSelect={onSelect}
+      label={`Lihat boarding pass ${e.parsedPassengerName ?? ""}`}
+    >
         <div className="flex items-center gap-2">
           {flight && <AirlineLogo code={flight.airlineCode} size="sm" mode="rich" />}
           <span className="font-board text-[19px] font-semibold leading-none tabular-nums text-kiosk-sign-glow">
@@ -2830,8 +3170,7 @@ function HistoryRow({
         {group === "rejected" && (
           <p className="mt-1 text-[12.5px] leading-snug text-rose-300/90">{e.message}</p>
         )}
-      </div>
-    </li>
+    </HistoryRowShell>
   );
 }
 
