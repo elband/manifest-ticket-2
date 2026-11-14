@@ -123,7 +123,7 @@ Tiga mode input yang bisa di-switch di header `/scan`:
 - `UNKNOWN_FLIGHT` — flight number tidak ada di database.
 - `INVALID_BARCODE` — format barcode tidak dikenali.
 
-Setiap outcome memberi feedback **audio (beep berbeda)** + **suara manusia/TTS** + **haptic (getar mobile)** + **toast**. Suara TTS (Web Speech API, Bahasa Indonesia bila tersedia): VALID → ucapan **"Berhasil"** (didahului ding), DUPLICATE → "Tiket sudah dipakai", lainnya → "Gagal". Berlaku di semua mode scan (kiosk & standar), di-gate oleh setting `soundOn`.
+Setiap outcome memberi feedback **audio (beep berbeda)** + **suara manusia/TTS** + **haptic (getar mobile)** + **toast**. Suara TTS (Web Speech API, Bahasa Indonesia bila tersedia): VALID → ucapan **"Berhasil"** (didahului ding), DUPLICATE → "Boarding pass sudah di scan", lainnya → "Gagal". Berlaku di semua mode scan (kiosk & standar), di-gate oleh setting `soundOn`.
 
 ### 4.5 Mode Kiosk (`/scan/kiosk`)
 Halaman fullscreen khusus monitor gate, tanpa navbar.

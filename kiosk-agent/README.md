@@ -57,7 +57,7 @@ terbaca. Menu ⚙ kiosk akan menampilkan "Matikan Perangkat".
 
 ## Suara hasil scan
 
-Kiosk mengucapkan **"Berhasil"**, **"Tiket sudah dipakai"**, atau **"Gagal"**
+Kiosk mengucapkan **"Berhasil"**, **"Boarding pass sudah di scan"**, atau **"Gagal"**
 setelah scan boarding pass/kartu PAS. Suaranya berupa file rekaman
 (`public/sounds/scan-*.mp3`), bukan TTS bawaan browser. Ini karena Chromium di
 Lubuntu umumnya tidak punya suara TTS Bahasa Indonesia.

@@ -12,7 +12,7 @@
 //
 // Bump CACHE_VERSION whenever this file or precached assets change.
 
-const CACHE_VERSION = "afvs-v3";
+const CACHE_VERSION = "afvs-v4";
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const PAGE_CACHE = `${CACHE_VERSION}-pages`;

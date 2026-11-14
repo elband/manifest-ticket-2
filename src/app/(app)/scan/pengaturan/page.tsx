@@ -552,7 +552,7 @@ function PinSection() {
 
 const SOUND_SAMPLES: { status: ScanResultStatus; label: string }[] = [
   { status: "VALID_FLIGHT", label: "Berhasil" },
-  { status: "DUPLICATE_SCAN", label: "Tiket sudah dipakai" },
+  { status: "DUPLICATE_SCAN", label: "Boarding pass sudah di scan" },
   { status: "INVALID_BARCODE", label: "Gagal" },
 ];
 
@@ -562,7 +562,7 @@ function SoundSection({ settings }: { settings: AppSettings }) {
     <Section icon={<Volume2 className="h-4 w-4" />} title="Suara dan getar" note="Perangkat ini">
       <Row
         title="Suara hasil scan"
-        description="Nada lalu suara “Berhasil”, “Tiket sudah dipakai”, atau “Gagal”."
+        description="Nada lalu suara “Berhasil”, “Boarding pass sudah di scan”, atau “Gagal”."
       >
         <Switch
           label="Suara hasil scan"

@@ -377,7 +377,7 @@ type VoiceClip = "berhasil" | "duplikat" | "gagal";
 
 const VOICE_TEXT: Record<VoiceClip, string> = {
   berhasil: "Berhasil",
-  duplikat: "Tiket sudah dipakai",
+  duplikat: "Boarding pass sudah di scan",
   gagal: "Gagal",
 };
 
@@ -475,7 +475,7 @@ export function previewFeedbackSound(status: ScanResultStatus) {
   void playFeedbackSoundAsync(status);
 }
 
-/* Web Audio feedback — nada + suara "Berhasil"/"Tiket sudah dipakai"/"Gagal". */
+/* Web Audio feedback — nada + suara "Berhasil"/"Boarding pass sudah di scan"/"Gagal". */
 export function playFeedbackSound(status: ScanResultStatus) {
   if (typeof window === "undefined") return;
   if (!getSettings().soundOn) return;

@@ -34,7 +34,7 @@ process.on("uncaughtException", (e) => {
 
 const CLIPS = [
   { file: "scan-berhasil.mp3", text: "Berhasil." },
-  { file: "scan-duplikat.mp3", text: "Tiket sudah dipakai." },
+  { file: "scan-duplikat.mp3", text: "Boarding pass sudah di-scan." },
   { file: "scan-gagal.mp3", text: "Gagal." },
 ];
 
