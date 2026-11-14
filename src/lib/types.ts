@@ -129,6 +129,10 @@ export interface ParsedBarcode {
    *  TERPOTONG maskapai, jadi token terakhir nama depan bisa tidak utuh dan
    *  nama tengah berikutnya hilang. Dipakai pencocokan nama KTP. */
   passengerNameTruncated?: boolean;
+  /** Hanya dari BCBP: awal barcode (M1 + nama + indikator E) hilang saat scan.
+   *  Field penerbangan terbaca, tapi nama tidak ada → validasi minta scan ulang
+   *  (tanpa nama, verifikasi KTP tak bisa dilakukan). */
+  bcbpHeaderMissing?: boolean;
   /** Tanggal keberangkatan dari barcode (YYYY-MM-DD) bila tersedia: field ke-6
    *  format pipe, atau Julian date BCBP. null = barcode tak memuat tanggal. */
   flightDate?: string | null;

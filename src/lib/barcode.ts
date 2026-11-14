@@ -85,20 +85,66 @@ function formatBcbpName(raw: string): string | null {
  *   pos 57     : status
  */
 export function parseIataBcbp(raw: string): ParsedBarcode | null {
-  if (!/^M\d/.test(raw)) return null;
+  if (!/^M\d/.test(raw)) return parseHeaderlessBcbp(raw);
   if (raw.length < 58) return null;
 
   const nameRaw = raw.substring(2, 22);
-  const pnr = raw.substring(23, 30).trim();
-  const origin = raw.substring(30, 33).trim().toUpperCase();
-  const destination = raw.substring(33, 36).trim().toUpperCase();
-  const airline = raw.substring(36, 39).trim();
-  const flightNumRaw = raw.substring(39, 44).trim();
+  const fields = bcbpFields(raw.substring(30), raw.substring(23, 30));
+  if (!fields) return null;
+
+  return {
+    ...fields,
+    passengerName: formatBcbpName(nameRaw),
+    // Field nama BCBP tetap 20 char & di-pad spasi; karakter terakhir bukan
+    // spasi → nama mengisi penuh field, kemungkinan besar terpotong.
+    passengerNameTruncated: nameRaw.length === 20 && nameRaw[19] !== " ",
+  };
+}
+
+/**
+ * Blok tetap BCBP mulai dari origin (pos 30-57 pada string utuh):
+ * origin(3) dest(3) maskapai(3) flight(4+1) julian(3) kelas(1) seat(4) seq(5).
+ * Dipakai untuk mengenali BCBP yang AWALNYA HILANG saat scan (lihat
+ * parseHeaderlessBcbp). Nama tidak mengandung angka, jadi pola ini tak
+ * mungkin cocok di tengah field nama.
+ */
+const BCBP_FIXED_BLOCK =
+  /([A-Z]{3})([A-Z]{3})([A-Z0-9]{2}[A-Z0-9 ])(\d{4}[A-Z ])(\d{3})([A-Z])([A-Z0-9 ]{4})([A-Z0-9 ]{5})/;
+
+/**
+ * BCBP yang bagian awalnya (M1 + nama + indikator E) hilang saat dibaca —
+ * mis. scanner USB mengetik sebelum input kiosk sempat fokus. Contoh:
+ *   "LHLEGJX AAPSUBQG 0461 318Y029C0060 147>7181 ..."
+ * Field penerbangan tetap bisa dibaca; nama penumpang TIDAK ada (null) dan
+ * ditandai `bcbpHeaderMissing` supaya validasi bisa meminta scan ulang.
+ */
+function parseHeaderlessBcbp(raw: string): ParsedBarcode | null {
+  const m = BCBP_FIXED_BLOCK.exec(raw.toUpperCase());
+  // Harus ada sisa PNR di depan blok; tanpa itu bukan BCBP terpotong.
+  if (!m || m.index < 1) return null;
+  // PNR = 7 karakter tepat sebelum origin (posisi IATA 23-29) — sama dengan
+  // hasil parser utuh untuk pass yang sama, jadi deteksi duplikat konsisten.
+  const pnrField = raw.substring(Math.max(0, m.index - 7), m.index);
+  const fields = bcbpFields(raw.substring(m.index).toUpperCase(), pnrField);
+  if (!fields) return null;
+  return { ...fields, passengerName: null, bcbpHeaderMissing: true };
+}
+
+/** Ekstrak field penerbangan dari `tail` (string BCBP mulai pos origin). */
+function bcbpFields(
+  tail: string,
+  pnrField: string,
+): Omit<ParsedBarcode, "passengerName"> | null {
+  const pnr = pnrField.trim();
+  const origin = tail.substring(0, 3).trim().toUpperCase();
+  const destination = tail.substring(3, 6).trim().toUpperCase();
+  const airline = tail.substring(6, 9).trim();
+  const flightNumRaw = tail.substring(9, 14).trim();
   const flightNum = flightNumRaw.replace(/^0+/, "") || flightNumRaw;
-  const seatRaw = raw.substring(48, 52).trim();
+  const seatRaw = tail.substring(18, 22).trim();
   const seat = seatRaw.replace(/^0+/, "") || seatRaw;
-  const seq = raw.substring(52, 57).trim().replace(/^0+/, "") || "0";
-  const doy = parseInt(raw.substring(44, 47).trim(), 10);
+  const seq = tail.substring(22, 27).trim().replace(/^0+/, "") || "0";
+  const doy = parseInt(tail.substring(14, 17).trim(), 10);
 
   if (!airline || !flightNum) return null;
 
@@ -107,10 +153,6 @@ export function parseIataBcbp(raw: string): ParsedBarcode | null {
     pnr: pnr || "—",
     ticketNumber: seq || "—",
     seatNumber: seat || "—",
-    passengerName: formatBcbpName(nameRaw),
-    // Field nama BCBP tetap 20 char & di-pad spasi; karakter terakhir bukan
-    // spasi → nama mengisi penuh field, kemungkinan besar terpotong.
-    passengerNameTruncated: nameRaw.length === 20 && nameRaw[19] !== " ",
     flightDate: julianToDate(doy),
     airlineCode: airline.toUpperCase(),
     originAirport: origin || null,

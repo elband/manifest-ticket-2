@@ -93,6 +93,43 @@ describe("parseIataBcbp — format BCBP IATA 792", () => {
   });
 });
 
+describe("parseIataBcbp — awal barcode hilang saat scan", () => {
+  // Kasus nyata SCP 2: "M1" + nama + "E" tidak terbaca scanner.
+  const truncated =
+    "LHLEGJX AAPSUBQG 0461 318Y029C0060 147>7181 6317BQG 0000000000002900000000000000 0";
+
+  it("field penerbangan tetap terbaca, nama null & ditandai", () => {
+    const r = parseBarcode(truncated);
+    expect(r).not.toBeNull();
+    expect(r?.flightNumber).toBe("QG461");
+    expect(r?.originAirport).toBe("AAP");
+    expect(r?.destinationAirport).toBe("SUB");
+    expect(r?.seatNumber).toBe("29C");
+    expect(r?.ticketNumber).toBe("60");
+    expect(r?.passengerName).toBeNull();
+    expect(r?.bcbpHeaderMissing).toBe(true);
+  });
+
+  it("PNR = 7 karakter sebelum origin (sama dengan parser utuh)", () => {
+    const full = "M1" + "YUSUF/AJIE MUH      " + "E" + "HLEGJX " + truncated.slice(8);
+    expect(parseBarcode(full)?.pnr).toBe("HLEGJX");
+    expect(parseBarcode(truncated)?.pnr).toBe("HLEGJX");
+    expect(parseBarcode(full)?.bcbpHeaderMissing).toBeUndefined();
+  });
+
+  it("tetap kenali bila sebagian nama masih ikut", () => {
+    const r = parseBarcode("AJIE MUH      EUHXURZ AAPBEJIW 1484 153Y001C0035 100");
+    expect(r?.flightNumber).toBe("IW1484");
+    expect(r?.pnr).toBe("UHXURZ");
+    expect(r?.bcbpHeaderMissing).toBe(true);
+  });
+
+  it("tolak teks acak / tanpa sisa PNR", () => {
+    expect(parseBarcode("HELLO WORLD 12345")).toBeNull();
+    expect(parseBarcode("AAPSUBQG 0461 318Y029C0060 1")).toBeNull();
+  });
+});
+
 describe("parseIataBcbp — rute & maskapai", () => {
   it("ekstrak airline, origin, destination dari boarding pass asli", () => {
     const r = parseIataBcbp(

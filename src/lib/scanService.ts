@@ -83,9 +83,23 @@ export function validateBarcode(raw: string): ValidationOutcome {
     return {
       status: "INVALID_BARCODE",
       message:
-        `Ditolak: format barcode tidak valid. Format harus: FLIGHT|PNR|TICKET|SEAT.${previousNote}`,
+        `Ditolak: format barcode tidak dikenali. Gunakan boarding pass asli (IATA BCBP) atau format FLIGHT|PNR|TICKET|SEAT.${previousNote}`,
       flight: null,
       parsed: null,
+    };
+  }
+
+  // BCBP terbaca sebagian (awal hilang saat scan): data penerbangan ikut
+  // disimpan agar petugas bisa melihatnya, tapi tetap DITOLAK — tanpa nama,
+  // verifikasi KTP akan terlewati, jadi penumpang harus scan ulang.
+  if (parsed.bcbpHeaderMissing) {
+    const previousNote = previousScanNote(cleaned, getScanEvents());
+    return {
+      status: "INVALID_BARCODE",
+      message:
+        `Ditolak: barcode terbaca tidak lengkap (bagian awal berisi nama penumpang hilang). Scan ulang boarding pass ${parsed.flightNumber} kursi ${parsed.seatNumber}.${previousNote}`,
+      flight: null,
+      parsed,
     };
   }
 
