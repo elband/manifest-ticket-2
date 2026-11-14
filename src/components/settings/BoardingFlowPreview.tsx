@@ -17,7 +17,7 @@ import type { AppSettings } from "@/lib/settings";
  * memakai contoh STD 14:00, supaya supervisor langsung paham bahwa flight TIDAK
  * "OPEN terus" / "ACTIVE terus" — melainkan bergerak otomatis:
  *
- *   DRAFT → OPEN → ACTIVE (final call) → CLOSED
+ *   OPEN (sejak awal hari) → ACTIVE (final call) → CLOSED
  *
  * mengikuti waktu & ambang yang dia set. Murni tampilan (tak menyimpan apa pun).
  */
@@ -48,38 +48,22 @@ export function BoardingFlowPreview({
   settings: AppSettings;
   onReset?: () => void;
 }) {
-  const openEnabled = settings.boardingOpenEnabled !== false;
   const activeEnabled = settings.boardingActiveEnabled !== false;
   const closeEnabled = settings.boardingCloseEnabled !== false;
 
-  const openBefore = Math.max(0, settings.boardingOpenMinutesBefore);
-  const activeBefore = Math.max(
-    0,
-    Math.min(openBefore, settings.boardingActiveMinutesBefore),
-  );
+  const activeBefore = Math.max(0, settings.boardingActiveMinutesBefore);
   const closeAfter = Math.max(0, settings.boardingCloseMinutesAfter);
 
-  const openAt = SAMPLE_STD - openBefore;
   const activeAt = SAMPLE_STD - activeBefore;
   const closeAt = SAMPLE_STD + closeAfter;
 
   const segs: Seg[] = [];
 
-  // Fase awal (sebelum boarding dibuka).
-  segs.push({
-    key: "draft",
-    label: openEnabled ? "DRAFT" : "DRAFT · buka manual",
-    at: null,
-    scan: false,
-    bar: "bg-slate-300 dark:bg-slate-600",
-    chip: "text-slate-500 dark:text-ink-subtle",
-  });
-
-  // OPEN.
+  // OPEN sejak awal hari keberangkatan (tanpa fase DRAFT berbasis waktu).
   segs.push({
     key: "open",
-    label: "OPEN",
-    at: openEnabled ? fmt(openAt) : null,
+    label: "OPEN · sejak pagi",
+    at: "00:00",
     scan: true,
     icon: <DoorOpen className="h-3 w-3" />,
     bar: "bg-cyan-400",

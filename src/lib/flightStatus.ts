@@ -6,7 +6,6 @@ export type EffectiveReason =
   | "CANCELLED"
   | "PAST_DAY"
   | "FUTURE_DAY"
-  | "BEFORE_OPEN"
   | "IN_OPEN_WINDOW"
   | "IN_ACTIVE_WINDOW"
   | "AFTER_CLOSE";
@@ -65,8 +64,6 @@ export function getEffectiveFlightStatus(
   now: Date,
   settings: Pick<
     AppSettings,
-    | "boardingOpenEnabled"
-    | "boardingOpenMinutesBefore"
     | "boardingActiveEnabled"
     | "boardingActiveMinutesBefore"
     | "boardingCloseEnabled"
@@ -132,38 +129,14 @@ export function getEffectiveFlightStatus(
     };
   }
 
-  const openEnabled = settings.boardingOpenEnabled !== false;
   const activeEnabled = settings.boardingActiveEnabled !== false;
   const closeEnabled = settings.boardingCloseEnabled !== false;
 
-  const openBefore = Math.max(0, settings.boardingOpenMinutesBefore);
-  const activeBefore = Math.max(
-    0,
-    Math.min(openBefore, settings.boardingActiveMinutesBefore),
-  );
+  const activeBefore = Math.max(0, settings.boardingActiveMinutesBefore);
   const closeAfter = Math.max(0, settings.boardingCloseMinutesAfter);
 
-  // Buka boarding off → flight tidak otomatis OPEN sebelum STD.
-  // Sebelum STD tetap dianggap DRAFT sampai supervisor menaikkan ke OPEN manual.
-  if (!openEnabled && minutesFromDeparture < 0) {
-    return {
-      status: "DRAFT",
-      reason: "BEFORE_OPEN",
-      minutesFromDeparture,
-      description: "Buka boarding otomatis dinonaktifkan — buka manual.",
-    };
-  }
-
-  if (openEnabled && minutesFromDeparture < -openBefore) {
-    return {
-      status: "DRAFT",
-      reason: "BEFORE_OPEN",
-      minutesFromDeparture,
-      description: `Boarding buka pukul ${formatHHmm(
-        stdTs - openBefore * 60000,
-      )}.`,
-    };
-  }
+  // Tidak ada jendela "buka boarding": flight hari ini langsung OPEN sejak awal
+  // hari — penumpang yang datang jauh sebelum STD tetap bisa di-scan.
 
   // Final call off → tetap OPEN sampai close window tercapai (atau tak terbatas).
   if (!activeEnabled) {

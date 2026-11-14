@@ -17,7 +17,6 @@ import {
   Archive,
   CalendarCheck,
   Timer,
-  DoorOpen,
   AlarmClockCheck,
   DoorClosed,
   Palette,
@@ -455,36 +454,6 @@ export default function SettingsPage() {
                 }
               />
               <ListRow
-                icon={<DoorOpen className="h-4 w-4" />}
-                iconBg="bg-cyan-100 text-cyan-700"
-                title={t("settings.pref.openWindow")}
-                subtitle={t("settings.pref.openWindow.desc")}
-                trailing={
-                  <ListSwitch
-                    checked={settings.boardingOpenEnabled}
-                    onChange={(v) => update({ boardingOpenEnabled: v })}
-                    ariaLabel="Aktifkan buka boarding otomatis"
-                  />
-                }
-              />
-              {settings.boardingOpenEnabled && (
-                <ListRow
-                  icon={<DoorOpen className="h-4 w-4" />}
-                  iconBg="bg-cyan-50 text-cyan-600"
-                  title="Menit sebelum STD"
-                  subtitle="Berapa lama sebelum STD status berubah jadi OPEN."
-                  trailing={
-                    <ListStepper
-                      value={settings.boardingOpenMinutesBefore}
-                      min={0}
-                      max={240}
-                      suffix="m"
-                      onChange={(v) => update({ boardingOpenMinutesBefore: v })}
-                    />
-                  }
-                />
-              )}
-              <ListRow
                 icon={<AlarmClockCheck className="h-4 w-4" />}
                 iconBg="bg-sky-100 text-sky-700"
                 title={t("settings.pref.activeWindow")}
@@ -507,7 +476,7 @@ export default function SettingsPage() {
                     <ListStepper
                       value={settings.boardingActiveMinutesBefore}
                       min={0}
-                      max={Math.max(0, settings.boardingOpenMinutesBefore)}
+                      max={240}
                       suffix="m"
                       onChange={(v) =>
                         update({ boardingActiveMinutesBefore: v })
@@ -939,26 +908,6 @@ export default function SettingsPage() {
                       onChange={(v) => update({ fidsAutoSync: v })}
                     />
                     <ToggleRow
-                      icon={<DoorOpen className="h-4 w-4" />}
-                      title="Aktifkan buka boarding otomatis"
-                      description="Jika dimatikan, flight harus diubah ke OPEN manual oleh supervisor."
-                      checked={settings.boardingOpenEnabled}
-                      onChange={(v) => update({ boardingOpenEnabled: v })}
-                    />
-                    <NumberRow
-                      icon={<DoorOpen className="h-4 w-4" />}
-                      title={t("settings.pref.openWindow")}
-                      description={t("settings.pref.openWindow.desc")}
-                      value={settings.boardingOpenMinutesBefore}
-                      min={0}
-                      max={240}
-                      suffix="menit"
-                      disabled={!settings.boardingOpenEnabled}
-                      onChange={(v) =>
-                        update({ boardingOpenMinutesBefore: v })
-                      }
-                    />
-                    <ToggleRow
                       icon={<AlarmClockCheck className="h-4 w-4" />}
                       title="Aktifkan final call otomatis"
                       description="Jika dimatikan, status ACTIVE tidak akan dipicu otomatis menjelang STD."
@@ -971,7 +920,7 @@ export default function SettingsPage() {
                       description={t("settings.pref.activeWindow.desc")}
                       value={settings.boardingActiveMinutesBefore}
                       min={0}
-                      max={Math.max(0, settings.boardingOpenMinutesBefore)}
+                      max={240}
                       suffix="menit"
                       disabled={!settings.boardingActiveEnabled}
                       onChange={(v) =>

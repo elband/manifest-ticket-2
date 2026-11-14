@@ -735,9 +735,7 @@ function RulesSection({ settings }: { settings: AppSettings }) {
   const rules: { title: string; value: string }[] = [
     {
       title: "Scan dibuka",
-      value: settings.boardingOpenEnabled
-        ? `${minutesLabel(settings.boardingOpenMinutesBefore)} sebelum jadwal berangkat`
-        : "Tanpa batas waktu",
+      value: "Sejak awal hari keberangkatan",
     },
     {
       title: "Scan ditutup",
