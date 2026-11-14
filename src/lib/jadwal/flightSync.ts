@@ -20,6 +20,7 @@ import { HOME_IATA, JadwalKeberangkatan, expectedPaxFor } from "./types";
  * remark FIDS → FlightStatus (mode pos pendataan / "hybrid").
  *
  *  - Cancelled/Batal           → CANCELLED (final)
+ *  - Check-in Closed/Open      → OPEN (konter check-in, bukan gate)
  *  - Departured/Closed/Tutup   → CLOSED (pesawat sudah berangkat / gate tutup)
  *  - selain itu (Check In Open, Estimate, Boarding, Delay, Scheduled, …)
  *    → OPEN, supaya boarding pass bisa di-scan di pos pemeriksaan SELAMA flight
@@ -27,9 +28,12 @@ import { HOME_IATA, JadwalKeberangkatan, expectedPaxFor } from "./types";
  *      dengan pengaman waktu STD+closeAfter di getEffectiveFlightStatus bila
  *      FIDS belum sempat melapor.
  */
-function mapRemarkStatus(remark: string | null): FlightStatus {
+export function mapRemarkStatus(remark: string | null): FlightStatus {
   const s = (remark ?? "").toLowerCase();
   if (s.includes("cancel") || s.includes("batal")) return "CANCELLED";
+  // "Check-in Closed" / "Check In Tutup" = konter check-in tutup, BUKAN gate:
+  // penumpang justru sedang melewati SCP menuju ruang tunggu → tetap OPEN.
+  if (/check[\s-]*in/.test(s)) return "OPEN";
   if (
     s.includes("depart") ||
     s.includes("berangkat") ||
