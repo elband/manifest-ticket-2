@@ -180,8 +180,16 @@ export function addFlight(flight: Flight) {
 }
 
 export function updateFlight(id: string, patch: Partial<Flight>) {
+  // Perubahan status lewat updateFlight = keputusan manusia (supervisor /
+  // sweeper) → ditandai manual agar merge FIDS tidak menimpanya.
+  const manual =
+    patch.status !== undefined && patch.manualStatus === undefined
+      ? { manualStatus: true }
+      : {};
   const list = getFlights().map((f) =>
-    f.id === id ? { ...f, ...patch, updatedAt: new Date().toISOString() } : f,
+    f.id === id
+      ? { ...f, ...patch, ...manual, updatedAt: new Date().toISOString() }
+      : f,
   );
   saveFlights(list);
 }

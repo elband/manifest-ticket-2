@@ -90,6 +90,10 @@ export async function pullFlights(params: {
         ...existing,
         ...inc,
         id: existing.id, // pertahankan id lokal agar referensi tidak putus
+        // Status dari backend yang berbeda = diubah petugas di perangkat lain
+        // (buka/tutup manual) → hormati sebagai manual saat merge FIDS.
+        manualStatus:
+          inc.status !== existing.status ? true : existing.manualStatus,
         // Flight dari server selalu riil: bila lokal masih penerbangan UJI,
         // data server menang & tanda uji dilepas.
         isTest: false,

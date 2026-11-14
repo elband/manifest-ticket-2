@@ -55,14 +55,17 @@ export function mapRemarkStatus(remark: string | null): FlightStatus {
  *  - ACTIVE (final call manual) dipertahankan.
  *  - selain itu (DRAFT/OPEN + FIDS aktif) → OPEN.
  */
-function nextStatus(
+export function nextStatus(
   existing: FlightStatus,
   incoming: FlightStatus,
+  existingManual = false,
 ): FlightStatus {
   if (existing === "CANCELLED") return "CANCELLED";
   if (incoming === "CANCELLED") return "CANCELLED";
   if (incoming === "CLOSED") return "CLOSED";
-  if (existing === "CLOSED") return "CLOSED";
+  // CLOSED hanya dipertahankan bila ditutup MANUSIA. CLOSED hasil FIDS (mis.
+  // dulu "Check-in Closed" salah dipetakan) dibuka lagi selama FIDS aktif.
+  if (existing === "CLOSED" && existingManual) return "CLOSED";
   if (existing === "ACTIVE") return "ACTIVE";
   return "OPEN";
 }
@@ -175,18 +178,22 @@ export async function pullFidsKeberangkatan(
     const k = keyOf(inc);
     const existing = byKey.get(k);
     if (existing) {
+      // Status mengikuti FIDS dengan aturan aman (lihat nextStatus): FIDS
+      // boleh MENUTUP (Departured/Cancelled) walau lokal sudah OPEN, tapi
+      // tak boleh membuka kembali yang CLOSED/CANCELLED manual.
+      // Bila lokal masih penerbangan UJI, jadwal riil dari FIDS menang:
+      // tanda uji dilepas & status sepenuhnya mengikuti FIDS.
+      const status = existing.isTest
+        ? inc.status
+        : nextStatus(existing.status, inc.status, existing.manualStatus === true);
       byKey.set(k, {
         ...existing,
         ...inc,
         id: existing.id, // pertahankan id lokal
-        // Status mengikuti FIDS dengan aturan aman (lihat nextStatus): FIDS
-        // boleh MENUTUP (Departured/Cancelled) walau lokal sudah OPEN, tapi
-        // tak boleh membuka kembali yang sudah CLOSED/CANCELLED manual.
-        // Bila lokal masih penerbangan UJI, jadwal riil dari FIDS menang:
-        // tanda uji dilepas & status sepenuhnya mengikuti FIDS.
-        status: existing.isTest
-          ? inc.status
-          : nextStatus(existing.status, inc.status),
+        status,
+        // Status berubah karena FIDS → bukan lagi keputusan manual.
+        manualStatus:
+          status === existing.status ? existing.manualStatus : false,
         isTest: false,
         // Pertahankan pax yang sudah diisi; default FIDS hanya mengisi yang kosong.
         expectedPax:

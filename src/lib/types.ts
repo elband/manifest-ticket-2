@@ -39,6 +39,10 @@ export interface Flight {
    *  walau tanggal di barcode bukan hari ini, dan jendela boarding diabaikan.
    *  Hanya berlaku bila flight ini dijadwalkan hari ini. */
   isTest?: boolean;
+  /** Status terakhir diubah MANUSIA (supervisor di perangkat ini/lain), bukan
+   *  hasil pemetaan remark FIDS. Hanya CLOSED/ACTIVE manual yang dipertahankan
+   *  saat merge FIDS; CLOSED dari FIDS boleh dibuka lagi bila FIDS aktif. */
+  manualStatus?: boolean;
   createdAt: string;
   updatedAt: string;
 }
