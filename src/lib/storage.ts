@@ -60,10 +60,88 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
+/** localStorage penuh (±5 MB per situs). */
+export class StorageFullError extends Error {
+  constructor() {
+    // Arsip & scan lama sudah dibuang otomatis sebelum error ini → sisanya
+    // hampir pasti antrean scan yang belum terkirim ke server.
+    super(
+      "Penyimpanan browser di perangkat ini penuh, biasanya karena banyak scan belum terkirim ke server. Pastikan kiosk tersambung ke server, lalu hubungi admin/IT.",
+    );
+    this.name = "StorageFullError";
+  }
+}
+
+export function isQuotaError(e: unknown): boolean {
+  return (
+    e instanceof DOMException &&
+    (e.name === "QuotaExceededError" || e.name === "NS_ERROR_DOM_QUOTA_REACHED" || e.code === 22)
+  );
+}
+
+/** Scan event yang dipertahankan saat penyimpanan penuh: hari ini & kemarin. */
+const KEEP_RECENT_MS = 2 * 86_400_000;
+
+function recentOnly(events: ScanEvent[]): ScanEvent[] {
+  const cutoff = Date.now() - KEEP_RECENT_MS;
+  return events.filter((e) => {
+    const t = Date.parse(e.scannedAt);
+    return !Number.isFinite(t) || t >= cutoff;
+  });
+}
+
+/**
+ * Kosongkan ruang localStorage saat penuh. Kiosk yang berjalan berhari-hari
+ * bisa memenuhi kuota (arsip s/d ribuan scan + antrean kirim), lalu SETIAP
+ * scan gagal disimpan tanpa reaksi apa pun di layar.
+ *
+ * Yang dibuang hanya salinan lokal untuk tampilan riwayat: arsip scan, lalu
+ * scan event lebih lama dari 2 hari. Antrean kirim ke server (data yang belum
+ * terkirim) TIDAK disentuh. Mengembalikan true bila ada yang dibuang.
+ */
+export function freeLocalStorageSpace(): boolean {
+  if (!isBrowser()) return false;
+  let freed = false;
+  if (window.localStorage.getItem(KEYS.scanEventsArchive) !== null) {
+    window.localStorage.removeItem(KEYS.scanEventsArchive);
+    invalidate(KEYS.scanEventsArchive);
+    freed = true;
+  }
+  const events = read<ScanEvent[]>(KEYS.scanEvents, []);
+  const recent = recentOnly(events);
+  if (recent.length < events.length) {
+    try {
+      window.localStorage.setItem(KEYS.scanEvents, JSON.stringify(recent));
+      cache.set(KEYS.scanEvents, recent);
+      freed = true;
+    } catch {
+      /* versi lebih kecil pun tak muat — biarkan pemanggil melapor penuh */
+    }
+  }
+  return freed;
+}
+
 function write<T>(key: string, value: T) {
   if (!isBrowser()) return;
-  window.localStorage.setItem(key, JSON.stringify(value));
-  cache.set(key, value);
+  const save = (v: T) => {
+    window.localStorage.setItem(key, JSON.stringify(v));
+    cache.set(key, v);
+  };
+  try {
+    save(value);
+    return;
+  } catch (e) {
+    if (!isQuotaError(e)) throw e;
+  }
+  freeLocalStorageSpace();
+  // Yang sedang ditulis daftar scan itu sendiri → ikut diringkas.
+  const retry = key === KEYS.scanEvents ? (recentOnly(value as ScanEvent[]) as T) : value;
+  try {
+    save(retry);
+  } catch (e) {
+    if (isQuotaError(e)) throw new StorageFullError();
+    throw e;
+  }
 }
 
 /**
@@ -311,7 +389,9 @@ export function purgeScanEventsArchive() {
  * Idempotent — aman dipanggil tiap mount AppShell; menggunakan
  * `KEYS.archiveAt` untuk menghindari re-run pada hari yang sama.
  */
-const ARCHIVE_MAX = 5000; // P-18: batas entri arsip agar localStorage tak membengkak
+// P-18: batas entri arsip agar localStorage tak membengkak. Dulu 5000 — bersama
+// antrean kirim itu cukup untuk memenuhi kuota ±5 MB di kiosk yang lama berjalan.
+const ARCHIVE_MAX = 1500;
 
 export function archiveOldScanEvents(keepDays = 1): {
   moved: number;

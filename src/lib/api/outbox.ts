@@ -8,7 +8,7 @@
 
 import { facePhotoStore } from "../facePhotoStore";
 import { getSettings } from "../settings";
-import { getSession } from "../storage";
+import { StorageFullError, freeLocalStorageSpace, getSession, isQuotaError } from "../storage";
 import type { ScanEvent } from "../types";
 import {
   ScanPushFields,
@@ -146,9 +146,30 @@ function readQueue(): ApiOutboxItem[] {
   }
 }
 
+/**
+ * Tulis ke localStorage; bila penuh, buang dulu salinan riwayat lokal (arsip
+ * scan, scan lama) lalu coba lagi. Antrean ini sendiri tidak pernah dipangkas
+ * — isinya scan yang belum sampai ke server.
+ */
+function setItemFreeing(key: string, json: string) {
+  try {
+    window.localStorage.setItem(key, json);
+    return;
+  } catch (e) {
+    if (!isQuotaError(e)) throw e;
+  }
+  freeLocalStorageSpace();
+  try {
+    window.localStorage.setItem(key, json);
+  } catch (e) {
+    if (isQuotaError(e)) throw new StorageFullError();
+    throw e;
+  }
+}
+
 function writeQueue(items: ApiOutboxItem[]) {
   if (!isBrowser()) return;
-  window.localStorage.setItem(QUEUE_KEY, JSON.stringify(items));
+  setItemFreeing(QUEUE_KEY, JSON.stringify(items));
   notify();
 }
 
@@ -166,7 +187,11 @@ function readMeta(): ApiOutboxMeta {
 
 function writeMeta(meta: ApiOutboxMeta) {
   if (!isBrowser()) return;
-  window.localStorage.setItem(META_KEY, JSON.stringify(meta));
+  try {
+    setItemFreeing(META_KEY, JSON.stringify(meta));
+  } catch {
+    /* status sinkron hanya informasi — jangan gagalkan pengiriman */
+  }
   notify();
 }
 

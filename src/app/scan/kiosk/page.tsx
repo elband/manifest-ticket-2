@@ -74,6 +74,7 @@ import {
   getScanEvents,
   getFlights,
   getUsers,
+  StorageFullError,
   updateScanEvent,
 } from "@/lib/storage";
 import {
@@ -541,8 +542,13 @@ export default function KioskPage() {
   React.useEffect(() => {
     // Kiosk tidak memakai AppShell → arsip harian dijalankan di sini juga,
     // supaya localStorage tidak penuh setelah berhari-hari (maks. 1x/hari;
-    // antrean kirim ke server tidak tersentuh).
-    archiveOldScanEvents(1);
+    // antrean kirim ke server tidak tersentuh). Penyimpanan penuh tak boleh
+    // menggagalkan pembukaan kiosk — write() sudah mencoba mengosongkan ruang.
+    try {
+      archiveOldScanEvents(1);
+    } catch (e) {
+      console.error("[kiosk] arsip harian gagal", e);
+    }
     const s = getSession();
     setSession(s);
     if (!s) {
@@ -831,6 +837,25 @@ export default function KioskPage() {
     }
   };
 
+  /**
+   * Error saat memproses scan (mis. penyimpanan browser penuh) dulu hanya
+   * jadi unhandled rejection → kiosk terlihat "tidak bereaksi". Kini tampil.
+   */
+  const reportScanError = (e: unknown) => {
+    console.error("[kiosk] scan gagal diproses", e);
+    const full = e instanceof StorageFullError;
+    toast.error(
+      full
+        ? e.message
+        : `Scan tidak bisa diproses${e instanceof Error && e.message ? `: ${e.message}` : "."} Tekan tombol muat ulang lalu coba lagi.`,
+      full ? "Penyimpanan penuh" : "Scan gagal",
+    );
+    playFeedbackSound("INVALID_BARCODE");
+    playFeedbackHaptic("INVALID_BARCODE");
+    setValue("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
   const submit = async (rawInput?: string) => {
     // Scan yang ditolak di sini dulu hilang tanpa reaksi apa pun ("scanner
     // tidak bekerja") — sekarang selalu ada pesan + alasannya di layar.
@@ -873,6 +898,8 @@ export default function KioskPage() {
     if (isPasQr(raw)) {
       try {
         await checkPasCard(raw);
+      } catch (e) {
+        reportScanError(e);
       } finally {
         submittingRef.current = false;
       }
@@ -1057,6 +1084,8 @@ export default function KioskPage() {
           return;
         }
         finish(finalStatus, finalMessage);
+      } catch (e) {
+        reportScanError(e);
       } finally {
         submittingRef.current = false;
       }
@@ -1170,6 +1199,8 @@ export default function KioskPage() {
       }
       setValue("");
       setTimeout(() => inputRef.current?.focus(), 0);
+    } catch (e) {
+      reportScanError(e);
     } finally {
       submittingRef.current = false;
     }

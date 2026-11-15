@@ -36,7 +36,7 @@ import {
   ScanResultStatus,
   SessionUser,
 } from "@/lib/types";
-import { getFlights, getScanEvents, getSession } from "@/lib/storage";
+import { StorageFullError, getFlights, getScanEvents, getSession } from "@/lib/storage";
 import {
   playFeedbackHaptic,
   playFeedbackSound,
@@ -176,7 +176,25 @@ function ScanPageContent() {
       return;
     }
     setAwaitingScanner(false);
-    const { outcome, event } = processScan(raw, session.email);
+    let result: ReturnType<typeof processScan>;
+    try {
+      result = processScan(raw, session.email);
+    } catch (e) {
+      // Mis. penyimpanan browser penuh — dulu scan hilang tanpa reaksi.
+      console.error("[scan] scan gagal diproses", e);
+      toast.error(
+        e instanceof StorageFullError
+          ? e.message
+          : `Scan tidak bisa diproses${e instanceof Error && e.message ? `: ${e.message}` : "."}`,
+        e instanceof StorageFullError ? "Penyimpanan penuh" : "Scan gagal",
+      );
+      playFeedbackSound("INVALID_BARCODE");
+      playFeedbackHaptic("INVALID_BARCODE");
+      setValue("");
+      setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
+    const { outcome, event } = result;
     playFeedbackSound(outcome.status);
     playFeedbackHaptic(outcome.status);
     if (outcome.status === "VALID_FLIGHT") {
