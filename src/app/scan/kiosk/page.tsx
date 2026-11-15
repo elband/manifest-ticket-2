@@ -145,6 +145,9 @@ const KTP_NAME_CROP = { x: 0.16, y: 0.27, w: 0.68, h: 0.36 };
 const KTP_CAPTURE_ASPECT = 4 / 3;
 const KTP_SHARP_THRESHOLD = 90; // > 90 = tajam
 const KTP_PENDING_TTL_MS = 45_000; // identitas KTP kedaluwarsa bila tak ada scan
+// Satu scan normal selesai < 2 dtk (cek PAS online ±8 dtk). Lebih dari ini =
+// macet → kunci dilepas supaya scan berikutnya tetap diproses.
+const SUBMIT_STUCK_MS = 20_000;
 
 type PendingKtp = {
   name: string;
@@ -520,6 +523,7 @@ export default function KioskPage() {
 
   const keyTimesRef = React.useRef<number[]>([]);
   const submittingRef = React.useRef(false);
+  const submitStartedAtRef = React.useRef(0);
   // Barcode demo terakhir — dipakai untuk mengulang pass yang sama (uji duplikat).
   const lastDemoRawRef = React.useRef<string | null>(null);
 
@@ -699,28 +703,43 @@ export default function KioskPage() {
     return () => window.clearTimeout(t);
   }, [pendingKtp]);
 
+  // Scanner siap = jendela browser aktif & input tersembunyi memegang fokus.
+  // Tidak siap → ketikan scanner USB hilang tanpa reaksi apa pun, jadi kiosk
+  // menampilkan peringatan "sentuh layar" (lihat ScannerInactiveBanner).
+  const [scannerReady, setScannerReady] = React.useState(true);
+  const notReadySinceRef = React.useRef<number | null>(null);
+
   React.useEffect(() => {
     const t = window.setInterval(() => {
       const el = inputRef.current;
-      if (!el || scanPausedRef.current) return;
+      if (!el) return;
       const active = document.activeElement as HTMLElement | null;
-      if (active === el) return;
-      // jangan rebut focus saat user sedang berinteraksi dengan kontrol form
-      // (mis. dropdown webcam, tombol modal, atau input lain)
-      if (active) {
-        const tag = active.tagName;
-        if (
-          tag === "SELECT" ||
-          tag === "OPTION" ||
-          tag === "BUTTON" ||
-          tag === "TEXTAREA" ||
-          (tag === "INPUT" && active !== el)
-        ) {
-          return;
-        }
-        if (active.isContentEditable) return;
+      // Jendela/modal yang sedang terbuka memang memegang fokusnya sendiri.
+      const dialogOpen = !!document.querySelector('[role="dialog"], [role="menu"]');
+      if (active !== el && !scanPausedRef.current) {
+        // Jangan rebut fokus dari kontrol yang sedang dipakai (dropdown webcam,
+        // input lain) atau dari tombol di dalam modal/menu.
+        const tag = active?.tagName;
+        const busy =
+          !!active &&
+          (tag === "SELECT" ||
+            tag === "OPTION" ||
+            tag === "TEXTAREA" ||
+            (tag === "INPUT" && active !== el) ||
+            active.isContentEditable ||
+            (tag === "BUTTON" && !!active.closest('[role="dialog"], [role="menu"]')));
+        // Tombol biasa (riwayat, demo, menu ⚙ yang sudah tertutup…) TIDAK boleh
+        // menahan fokus: dulu fokus tertinggal di tombol yang terakhir disentuh,
+        // sehingga scan berikutnya tidak terbaca sama sekali.
+        if (!busy) el.focus();
       }
-      el.focus();
+      const ready =
+        scanPausedRef.current || dialogOpen || (document.hasFocus() && document.activeElement === el);
+      const now = Date.now();
+      if (ready) notReadySinceRef.current = null;
+      else notReadySinceRef.current ??= now;
+      // Jeda 1,5 dtk supaya peringatan tidak berkedip saat fokus berpindah sesaat.
+      setScannerReady(ready || now - (notReadySinceRef.current ?? now) < 1500);
     }, 500);
     return () => window.clearInterval(t);
   }, []);
@@ -813,10 +832,33 @@ export default function KioskPage() {
   };
 
   const submit = async (rawInput?: string) => {
-    if (!session) return;
-    if (submittingRef.current) return;
+    // Scan yang ditolak di sini dulu hilang tanpa reaksi apa pun ("scanner
+    // tidak bekerja") — sekarang selalu ada pesan + alasannya di layar.
+    const blocked = (body: string, title: string) => {
+      toast.warning(body, title);
+      playFeedbackSound("INVALID_BARCODE");
+      setValue("");
+      setTimeout(() => inputRef.current?.focus(), 0);
+    };
+    if (!session) {
+      blocked("Sesi petugas tidak terbaca. Tekan tombol muat ulang di kanan atas.", "Scan tidak diproses");
+      return;
+    }
+    if (submittingRef.current) {
+      // Pemrosesan sebelumnya macet (mis. kamera/penyimpanan foto tak pernah
+      // menjawab) → tanpa ini SEMUA scan berikutnya diabaikan diam-diam
+      // sampai halaman dimuat ulang.
+      if (Date.now() - submitStartedAtRef.current < SUBMIT_STUCK_MS) {
+        blocked("Scan sebelumnya masih diproses. Tunggu sebentar lalu scan ulang.", "Tunggu sebentar");
+        return;
+      }
+      submittingRef.current = false;
+    }
     // Petugas belum memutuskan KTP zona "periksa manual" — tahan scan berikutnya.
-    if (ktpDecision) return;
+    if (ktpDecision) {
+      blocked("Pilih Sesuai atau Tidak sesuai pada pemeriksaan KTP dulu.", "Scan ditahan");
+      return;
+    }
     const raw = rawInput ?? value;
     if (!raw.trim()) {
       setValue("");
@@ -824,6 +866,7 @@ export default function KioskPage() {
       return;
     }
     submittingRef.current = true;
+    submitStartedAtRef.current = Date.now();
 
     // === Kartu Pas Bandara karyawan: bukan boarding pass — dicek online ke
     // server PAS lewat backend, tak lewat processScan/outbox. ===
@@ -1497,6 +1540,23 @@ export default function KioskPage() {
         aria-label="Scanner input"
         className="pointer-events-none fixed -left-[9999px] top-0 h-px w-px opacity-0"
       />
+
+      {!scannerReady && (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.focus()}
+          role="alert"
+          className="fixed inset-x-0 top-[72px] z-40 mx-auto flex w-fit max-w-[calc(100%-32px)] items-center gap-3 rounded-lg bg-kiosk-hold px-5 py-3 text-left font-sign text-kiosk-asphalt shadow-xl ring-2 ring-white/70 animate-fade-in motion-reduce:animate-none"
+        >
+          <ScanLine className="h-6 w-6 shrink-0" />
+          <span className="leading-tight">
+            <span className="block text-[17px] font-bold">Scanner belum aktif</span>
+            <span className="block text-[14px] font-medium">
+              Sentuh layar ini sekali, lalu scan ulang boarding pass.
+            </span>
+          </span>
+        </button>
+      )}
 
       {/* Aula: panel scanner boarding pass layar penuh (untuk penumpang). */}
       <main className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3 sm:px-6 sm:py-5 lg:overflow-visible">
