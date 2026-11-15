@@ -81,6 +81,17 @@ export const facePhotoStore = {
     await withStore("readwrite", (s) => s.delete(id));
   },
 
+  /** Semua id foto yang tersimpan (= id scan). */
+  async keys(): Promise<string[]> {
+    if (!isBrowser()) return [];
+    try {
+      const keys = await withStore<IDBValidKey[]>("readonly", (s) => s.getAllKeys());
+      return keys.map(String);
+    } catch {
+      return [];
+    }
+  },
+
   async clearAll(): Promise<void> {
     if (!isBrowser()) return;
     await withStore("readwrite", (s) => s.clear());

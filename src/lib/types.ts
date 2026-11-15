@@ -100,6 +100,12 @@ export interface ScanEvent {
   ktpVerification?: KtpVerification | null;
   /** Scan pada penerbangan UJI — hanya lokal, tidak dikirim ke backend/Sikeren. */
   isTest?: boolean;
+  /**
+   * Kapan server mengonfirmasi menerima scan ini. Hanya scan bertanda ini
+   * (atau scan uji) yang boleh dibersihkan dari perangkat setelah 7 hari —
+   * lihat localRetention.ts.
+   */
+  syncedAt?: string | null;
 }
 
 export type KtpVerificationStatus =

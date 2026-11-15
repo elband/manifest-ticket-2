@@ -68,6 +68,7 @@ import {
   ensureDemoBoardingFlight,
 } from "@/lib/seedBoardingPasses";
 import { useToast } from "@/components/ui/Toast";
+import { pruneSyncedLocalData } from "@/lib/localRetention";
 import {
   archiveOldScanEvents,
   getSession,
@@ -549,6 +550,8 @@ export default function KioskPage() {
     } catch (e) {
       console.error("[kiosk] arsip harian gagal", e);
     }
+    // Salinan scan & foto yang sudah tersimpan di server, > 7 hari (maks. 1x/hari).
+    void pruneSyncedLocalData();
     const s = getSession();
     setSession(s);
     if (!s) {

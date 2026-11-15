@@ -368,6 +368,59 @@ export function updateScanEvent(id: string, patch: Partial<ScanEvent>) {
   saveScanEvents(list);
 }
 
+/**
+ * Tandai scan yang sudah diterima server (di daftar harian maupun arsip —
+ * antrean bisa terkirim berhari-hari kemudian, setelah scan diarsipkan).
+ */
+export function markScanEventsSynced(ids: string[], at = new Date().toISOString()) {
+  if (!isBrowser() || ids.length === 0) return;
+  const want = new Set(ids);
+  for (const key of [KEYS.scanEvents, KEYS.scanEventsArchive]) {
+    const list = read<ScanEvent[]>(key, []);
+    let changed = false;
+    const next = list.map((e) => {
+      if (!want.has(e.id) || e.syncedAt) return e;
+      changed = true;
+      return { ...e, syncedAt: at };
+    });
+    if (changed) write(key, next);
+  }
+}
+
+/**
+ * Buang dari perangkat scan yang SUDAH tersimpan di server (atau scan uji yang
+ * memang hanya lokal) dan lebih lama dari `cutoffMs`. Scan tanpa tanda
+ * terkirim — mis. dibuat saat sinkron server mati — tidak pernah dibuang di
+ * sini. `keepIds` = scan yang masih di antrean kirim. Mengembalikan yang dibuang.
+ */
+export function removeSyncedScanEventsBefore(cutoffMs: number, keepIds: Set<string>): ScanEvent[] {
+  if (!isBrowser()) return [];
+  const removed: ScanEvent[] = [];
+  for (const key of [KEYS.scanEvents, KEYS.scanEventsArchive]) {
+    const list = read<ScanEvent[]>(key, []);
+    const keep = list.filter((e) => {
+      const t = Date.parse(e.scannedAt);
+      const drop =
+        (!!e.syncedAt || e.isTest === true) &&
+        Number.isFinite(t) &&
+        t < cutoffMs &&
+        !keepIds.has(e.id);
+      if (drop) removed.push(e);
+      return !drop;
+    });
+    if (keep.length < list.length) write(key, keep);
+  }
+  return removed;
+}
+
+/** Semua id scan yang masih ada di perangkat (daftar harian + arsip). */
+export function getLocalScanEventIds(): Set<string> {
+  const ids = new Set<string>();
+  for (const e of getScanEvents()) ids.add(e.id);
+  for (const e of getScanEventsArchive()) ids.add(e.id);
+  return ids;
+}
+
 /* Scan Events Archive */
 export function getScanEventsArchive(): ScanEvent[] {
   return read<ScanEvent[]>(KEYS.scanEventsArchive, []);

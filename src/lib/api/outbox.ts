@@ -8,7 +8,13 @@
 
 import { facePhotoStore } from "../facePhotoStore";
 import { getSettings } from "../settings";
-import { StorageFullError, freeLocalStorageSpace, getSession, isQuotaError } from "../storage";
+import {
+  StorageFullError,
+  freeLocalStorageSpace,
+  getSession,
+  isQuotaError,
+  markScanEventsSynced,
+} from "../storage";
 import type { ScanEvent } from "../types";
 import {
   ScanPushFields,
@@ -165,6 +171,11 @@ function setItemFreeing(key: string, json: string) {
     if (isQuotaError(e)) throw new StorageFullError();
     throw e;
   }
+}
+
+/** Id scan yang masih menunggu di antrean (termasuk keputusan cek KTP). */
+export function getApiOutboxEventIds(): Set<string> {
+  return new Set(readQueue().map((q) => q.fields?.eventId ?? q.id));
 }
 
 function writeQueue(items: ApiOutboxItem[]) {
@@ -457,6 +468,8 @@ export async function flushApiOutbox(opts?: {
   let failed = 0;
   let skipped = 0;
   let serverRejections = 0;
+  // Scan yang diterima server di batch ini → ditandai syncedAt sekali di akhir.
+  const syncedIds: string[] = [];
 
   try {
     let queue = readQueue();
@@ -499,6 +512,7 @@ export async function flushApiOutbox(opts?: {
         });
         sent += 1;
         serverRejections = 0;
+        if (!item.identity) syncedIds.push(item.id);
       } else {
         const kind = classifyPushError(result.status);
         const attempts = kind === "permanent" ? item.attempts + 1 : item.attempts;
@@ -537,6 +551,11 @@ export async function flushApiOutbox(opts?: {
     }
   } finally {
     flushing = false;
+    try {
+      markScanEventsSynced(syncedIds);
+    } catch {
+      /* penanda hanya untuk pembersihan lokal — jangan gagalkan pengiriman */
+    }
   }
   return { sent, failed, skipped };
 }

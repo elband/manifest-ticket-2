@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { SessionUser, UserRole } from "@/lib/types";
 import { archiveOldScanEvents, ensureSeed, getSession } from "@/lib/storage";
+import { pruneSyncedLocalData } from "@/lib/localRetention";
 import { sweepPastDayFlights } from "@/lib/flightSweeper";
 import { logout } from "@/lib/auth";
 import { cn, todayDateString } from "@/lib/utils";
@@ -243,7 +244,13 @@ function AppShellInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     ensureSeed();
-    archiveOldScanEvents(1);
+    try {
+      archiveOldScanEvents(1);
+    } catch (e) {
+      console.error("[app] arsip harian gagal", e);
+    }
+    // Salinan scan & foto yang sudah tersimpan di server, > 7 hari (maks. 1x/hari).
+    void pruneSyncedLocalData();
     sweepPastDayFlights();
     const s = getSession();
     if (!s) {
