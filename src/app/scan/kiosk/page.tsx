@@ -526,6 +526,7 @@ export default function KioskPage() {
   const keyTimesRef = React.useRef<number[]>([]);
   const submittingRef = React.useRef(false);
   const submitStartedAtRef = React.useRef(0);
+  const submittingRawRef = React.useRef("");
   // Barcode demo terakhir — dipakai untuk mengulang pass yang sama (uji duplikat).
   const lastDemoRawRef = React.useRef<string | null>(null);
 
@@ -868,6 +869,15 @@ export default function KioskPage() {
       setValue("");
       setTimeout(() => inputRef.current?.focus(), 0);
     };
+    // Input kosong DIPERIKSA PALING AWAL: banyak scanner mengirim dua Enter
+    // (CR+LF). Enter kedua (kosong) datang saat cek PAS masih menunggu server
+    // → dulu memicu "scan masih diproses" + bunyi gagal setelah bunyi berhasil.
+    const raw = rawInput ?? value;
+    if (!raw.trim()) {
+      setValue("");
+      setTimeout(() => inputRef.current?.focus(), 0);
+      return;
+    }
     if (!session) {
       blocked("Sesi petugas tidak terbaca. Tekan tombol muat ulang di kanan atas.", "Scan tidak diproses");
       return;
@@ -877,6 +887,12 @@ export default function KioskPage() {
       // menjawab) → tanpa ini SEMUA scan berikutnya diabaikan diam-diam
       // sampai halaman dimuat ulang.
       if (Date.now() - submitStartedAtRef.current < SUBMIT_STUCK_MS) {
+        // Kode yang sama terkirim ulang (scanner/kamera) → abaikan diam-diam;
+        // hasilnya sudah sedang diproses.
+        if (raw.trim() === submittingRawRef.current) {
+          setValue("");
+          return;
+        }
         blocked("Scan sebelumnya masih diproses. Tunggu sebentar lalu scan ulang.", "Tunggu sebentar");
         return;
       }
@@ -887,14 +903,9 @@ export default function KioskPage() {
       blocked("Pilih Sesuai atau Tidak sesuai pada pemeriksaan KTP dulu.", "Scan ditahan");
       return;
     }
-    const raw = rawInput ?? value;
-    if (!raw.trim()) {
-      setValue("");
-      setTimeout(() => inputRef.current?.focus(), 0);
-      return;
-    }
     submittingRef.current = true;
     submitStartedAtRef.current = Date.now();
+    submittingRawRef.current = raw.trim();
 
     // === Kartu Pas Bandara karyawan: bukan boarding pass — dicek online ke
     // server PAS lewat backend, tak lewat processScan/outbox. ===
