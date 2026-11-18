@@ -150,6 +150,9 @@ const KTP_PENDING_TTL_MS = 45_000; // identitas KTP kedaluwarsa bila tak ada sca
 // Satu scan normal selesai < 2 dtk (cek PAS online ±8 dtk). Lebih dari ini =
 // macet → kunci dilepas supaya scan berikutnya tetap diproses.
 const SUBMIT_STUCK_MS = 20_000;
+// Kode yang sama dari scanner diabaikan selama ini setelah kiriman terakhirnya
+// (scanner mode presentasi membaca ulang kartu/boarding pass yang masih ditahan).
+const SAME_CODE_MS = 3_500;
 
 type PendingKtp = {
   name: string;
@@ -526,7 +529,8 @@ export default function KioskPage() {
   const keyTimesRef = React.useRef<number[]>([]);
   const submittingRef = React.useRef(false);
   const submitStartedAtRef = React.useRef(0);
-  const submittingRawRef = React.useRef("");
+  /** Kode terakhir yang diproses & sampai kapan kiriman ulangnya diabaikan. */
+  const scanGateRef = React.useRef<{ code: string; until: number }>({ code: "", until: 0 });
   // Barcode demo terakhir — dipakai untuk mengulang pass yang sama (uji duplikat).
   const lastDemoRawRef = React.useRef<string | null>(null);
 
@@ -882,17 +886,28 @@ export default function KioskPage() {
       blocked("Sesi petugas tidak terbaca. Tekan tombol muat ulang di kanan atas.", "Scan tidak diproses");
       return;
     }
+    // Kode yang SAMA terkirim ulang — selama masih diproses, atau sampai
+    // SAME_CODE_MS setelah kiriman terakhirnya. Scanner kiosk mode presentasi
+    // membaca ulang kartu yang masih ditahan di depannya tiap 1–3 dtk → dulu
+    // cek PAS jalan dua kali & suaranya terdengar ganda (kadang-kadang,
+    // tergantung lamanya kartu ditahan). Abaikan diam-diam; jendela diperpanjang
+    // selama kode itu terus terkirim (sama seperti kamera).
+    const code = raw.trim();
+    const now = Date.now();
+    const gate = scanGateRef.current;
+    if (
+      code === gate.code &&
+      (now < gate.until || (submittingRef.current && now - submitStartedAtRef.current < SUBMIT_STUCK_MS))
+    ) {
+      gate.until = now + SAME_CODE_MS;
+      setValue("");
+      return;
+    }
     if (submittingRef.current) {
       // Pemrosesan sebelumnya macet (mis. kamera/penyimpanan foto tak pernah
       // menjawab) → tanpa ini SEMUA scan berikutnya diabaikan diam-diam
       // sampai halaman dimuat ulang.
-      if (Date.now() - submitStartedAtRef.current < SUBMIT_STUCK_MS) {
-        // Kode yang sama terkirim ulang (scanner/kamera) → abaikan diam-diam;
-        // hasilnya sudah sedang diproses.
-        if (raw.trim() === submittingRawRef.current) {
-          setValue("");
-          return;
-        }
+      if (now - submitStartedAtRef.current < SUBMIT_STUCK_MS) {
         blocked("Scan sebelumnya masih diproses. Tunggu sebentar lalu scan ulang.", "Tunggu sebentar");
         return;
       }
@@ -904,8 +919,9 @@ export default function KioskPage() {
       return;
     }
     submittingRef.current = true;
-    submitStartedAtRef.current = Date.now();
-    submittingRawRef.current = raw.trim();
+    submitStartedAtRef.current = now;
+    // Jendela "kode sama" dihitung ulang saat hasilnya selesai (blok finally di bawah).
+    scanGateRef.current = { code, until: now + SAME_CODE_MS };
 
     // === Kartu Pas Bandara karyawan: bukan boarding pass — dicek online ke
     // server PAS lewat backend, tak lewat processScan/outbox. ===
@@ -916,6 +932,7 @@ export default function KioskPage() {
         reportScanError(e);
       } finally {
         submittingRef.current = false;
+        scanGateRef.current.until = Date.now() + SAME_CODE_MS;
       }
       return;
     }
@@ -1102,6 +1119,7 @@ export default function KioskPage() {
         reportScanError(e);
       } finally {
         submittingRef.current = false;
+        scanGateRef.current.until = Date.now() + SAME_CODE_MS;
       }
       return;
     }
@@ -1217,6 +1235,7 @@ export default function KioskPage() {
       reportScanError(e);
     } finally {
       submittingRef.current = false;
+      scanGateRef.current.until = Date.now() + SAME_CODE_MS;
     }
   };
 
